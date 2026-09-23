@@ -165,9 +165,9 @@ Two phases, standard for all RAG:
 Build ONE checkpoint at a time. Verify it works. Then move on. Never build on
 an unproven piece. When something breaks, it's in the piece just added.
 
-- [ ] **Checkpoint 1 — The library.** Download ATT&CK STIX → extract techniques →
+- [x] **Checkpoint 1 — The library.** Download ATT&CK STIX → extract techniques →
       build clean snippets → embed → load into a hybrid-search store.
-      *Done when:* a manual search returns relevant techniques.
+      *Done when:* a manual search returns relevant techniques. ✅ 2026-09-23
 - [ ] **Checkpoint 2 — Retrieval core.** Log in → hybrid search → rerank → clean
       top 3. *Done when:* pasting a sample log reliably surfaces the right
       technique. (Testable with NO LLM — proves retrieval before generation.)
@@ -227,5 +227,12 @@ an unproven piece. When something breaks, it's in the piece just added.
       which downloads the Enterprise STIX 2.1 file and prints techniques
       (ID — name — description) via `mitreattack-python`. Verified: 697 active
       techniques load and print. Done 2026-09-23.
-- Next: Checkpoint 1b — extract each technique into clean snippets, then embed
-  them into a hybrid-search store. (Not started.)
+- [x] **Checkpoint 1 (Phase A complete) — The searchable library.** Modular
+      pipeline in src/ (attack_data → snippets → embedder → vector_store) plus
+      scripts/build_index.py (repeatable) and scripts/search.py (manual query).
+      Embeddings: all-MiniLM-L6-v2 (local, CPU). Store: LanceDB (embedded;
+      vector + BM25 keyword in one, ready for hybrid). Verified: 697 techniques
+      indexed; manual search for an LSASS-dumping log returns T1003.001 #1 with
+      grounded mitigations. Done 2026-09-23.
+- Next: Checkpoint 2 — retrieval core (log in → hybrid search → rerank → clean
+  top 3). Testable with NO LLM. (Not started.)

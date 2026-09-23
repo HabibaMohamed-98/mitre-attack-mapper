@@ -1,7 +1,24 @@
-# Checkpoint 1a dependencies — only what we need to download and read
-# the MITRE ATT&CK STIX data so far. More gets added in later checkpoints
-# (sentence-transformers for embeddings, the OpenAI client for the LLM, etc.).
+# Dependencies through Checkpoint 1 (Phase A: the searchable library).
+# More gets added in later checkpoints (the OpenAI client for the LLM, FastAPI, etc.).
+#
+# Versions are PINNED because this runs on a 2019 Intel MacBook Pro (x86, no GPU):
+# the newest torch/numpy/transformers drop or break Intel-Mac support, so we hold
+# the last combination known to work together on this machine.
 
-# MITRE's official Python library for working with ATT&CK STIX 2.1 data.
-# It also pulls in stix2 / taxii2 under the hood, so this one line is enough.
+# --- MITRE ATT&CK data (Checkpoint 1a) ---
 mitreattack-python==6.2.0
+
+# --- Local embedding model (Checkpoint 1) ---
+# torch 2.2.2 is the last version with Intel-Mac (x86) wheels; numpy must stay
+# <2 for that torch; transformers/tokenizers/hub are pinned to match
+# sentence-transformers 3.0.1.
+sentence-transformers==3.0.1
+transformers==4.44.2
+tokenizers==0.19.1
+huggingface-hub==0.24.6
+torch==2.2.2
+numpy==1.26.4
+
+# --- Hybrid-search store: vector + full-text (BM25) in one embedded DB ---
+lancedb==0.25.3
+tantivy==0.26.2   # backs LanceDB's full-text (keyword) index

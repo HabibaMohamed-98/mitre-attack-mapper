@@ -10,9 +10,10 @@ __pycache__/
 # Environment / secrets (API keys for the hosted LLM, added in a later checkpoint)
 .env
 
-# Large downloaded data files (MITRE ATT&CK STIX, embeddings, etc.)
-# These are big and can always be re-downloaded, so we don't commit them.
+# Large / derived data (MITRE ATT&CK STIX download + the built search index).
+# All of it is rebuildable from scripts, so we don't commit it.
 data/*.json
+data/lancedb/
 
 # But DO keep the sample_logs.json test set (it lives at the repo root, not in data/)
 # and keep the data/ folder itself around via a placeholder.
