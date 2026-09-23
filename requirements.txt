@@ -1,0 +1,7 @@
+# Checkpoint 1a dependencies — only what we need to download and read
+# the MITRE ATT&CK STIX data so far. More gets added in later checkpoints
+# (sentence-transformers for embeddings, the OpenAI client for the LLM, etc.).
+
+# MITRE's official Python library for working with ATT&CK STIX 2.1 data.
+# It also pulls in stix2 / taxii2 under the hood, so this one line is enough.
+mitreattack-python==6.2.0

