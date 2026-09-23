@@ -168,9 +168,10 @@ an unproven piece. When something breaks, it's in the piece just added.
 - [x] **Checkpoint 1 — The library.** Download ATT&CK STIX → extract techniques →
       build clean snippets → embed → load into a hybrid-search store.
       *Done when:* a manual search returns relevant techniques. ✅ 2026-09-23
-- [ ] **Checkpoint 2 — Retrieval core.** Log in → hybrid search → rerank → clean
+- [x] **Checkpoint 2 — Retrieval core.** Log in → hybrid search → rerank → clean
       top 3. *Done when:* pasting a sample log reliably surfaces the right
       technique. (Testable with NO LLM — proves retrieval before generation.)
+      ✅ 2026-09-23
 - [ ] **Checkpoint 3 — Generation.** Log + top techniques + mitigations → LLM
       (hosted, wrapped) with grounding rule → mapping + evidence + mitigation.
       *Done when:* a log in gives a complete grounded answer out (command line).
@@ -234,5 +235,16 @@ an unproven piece. When something breaks, it's in the piece just added.
       vector + BM25 keyword in one, ready for hybrid). Verified: 697 techniques
       indexed; manual search for an LSASS-dumping log returns T1003.001 #1 with
       grounded mitigations. Done 2026-09-23.
-- Next: Checkpoint 2 — retrieval core (log in → hybrid search → rerank → clean
-  top 3). Testable with NO LLM. (Not started.)
+- [x] **Checkpoint 2 — Retrieval core.** src/ modules: hybrid_search.py
+      (semantic + BM25 keyword search fused with Reciprocal Rank Fusion → ~10
+      candidates), reranker.py (local cross-encoder ms-marco-MiniLM-L-6-v2, small
+      + CPU-only → top 3), retrieval.py (orchestrates), plus a light
+      normalize_query() that strips log punctuation. Entry point:
+      scripts/retrieve.py. Verified: LSASS/mimikatz→T1003.001, /etc/shadow→
+      T1003.008, rundll32→T1218.011 all return correct #1. Reranker lifts top-1
+      from 3/17 to 6/17 vs fusion alone. Done 2026-09-23.
+      Honest note: strong on behaviour descriptions; partial on raw noisy SIEM
+      logs (~top-3 40% on the hardest labelled logs). Closing that gap is the
+      Phase B "log → plain-language behaviour" step (later, uses the LLM).
+      Kept small CPU-only models per spec (a heavier reranker was too slow here).
+- Next: Checkpoint 3 — Generation (LLM writes the grounded answer). NOT started.

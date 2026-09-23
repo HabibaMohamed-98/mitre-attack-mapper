@@ -14,7 +14,12 @@ No LLM is involved — this is pure retrieval, exactly as the checkpoint intends
 """
 
 import sys
+import warnings
 from pathlib import Path
+
+# Silence a cosmetic FutureWarning from the transformers tokenizer (a library
+# deprecation notice, unrelated to our code) so the printed output stays clean.
+warnings.filterwarnings("ignore", category=FutureWarning)
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 

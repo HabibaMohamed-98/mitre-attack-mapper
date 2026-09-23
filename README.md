@@ -8,9 +8,9 @@ logs to **MITRE ATT&CK** techniques and suggests a grounded response.
 This is a clean-room learning + portfolio project built on open, public data only.
 The full plan, decisions, and checkpoint status live in [`CLAUDE.md`](CLAUDE.md).
 
-**Status:** Checkpoint 1 complete — the searchable library is built (extract →
-snippet → embed → hybrid-search index). Retrieval logic, reranker, and the LLM
-come in later checkpoints.
+**Status:** Checkpoint 2 complete — the retrieval core works (log in → hybrid
+search → rerank → top 3), with NO LLM yet. The LLM (grounded answer writer) comes
+in Checkpoint 3.
 
 ## Project layout
 
@@ -24,11 +24,15 @@ mitre-attack-mapper/
 │   ├── attack_data.py  # Extract techniques (id, name, desc, tactics, mitigations)
 │   ├── snippets.py     # Turn a technique into one searchable text snippet
 │   ├── embedder.py     # Local embedding model (all-MiniLM-L6-v2)
-│   └── vector_store.py # LanceDB hybrid store: vector + keyword search
+│   ├── vector_store.py # LanceDB hybrid store: vector + keyword search
+│   ├── hybrid_search.py# Checkpoint 2: semantic + keyword search fused with RRF
+│   ├── reranker.py     # Checkpoint 2: local cross-encoder reranker
+│   └── retrieval.py    # Checkpoint 2: log -> hybrid search -> rerank -> top 3
 ├── scripts/            # Runnable helper scripts you invoke by hand
 │   ├── load_attack_data.py  # Checkpoint 1a: download + print ATT&CK techniques
 │   ├── build_index.py       # Checkpoint 1: build the searchable index
-│   └── search.py            # Checkpoint 1: manual similarity search
+│   ├── search.py            # Checkpoint 1: manual similarity search
+│   └── retrieve.py          # Checkpoint 2: log in -> top-3 techniques out
 └── data/               # Downloaded STIX + built index (git-ignored; rebuildable)
 ```
 
@@ -91,3 +95,29 @@ indexed (697). Re-running overwrites cleanly.
 
 Embeds your query and returns the closest techniques by meaning (plus the top
 keyword hit). No LLM involved — this is pure retrieval.
+
+**4. (Checkpoint 2) Map a log line to its top-3 techniques:**
+
+```bash
+./venv/bin/python scripts/retrieve.py "Sysmon EventID 4698 a scheduled task was created to run a program at logon"
+```
+
+Runs the full retrieval core: normalize the log → **hybrid search** (semantic +
+keyword, fused with Reciprocal Rank Fusion) → **rerank** with a local
+cross-encoder → the 3 best techniques with scores. Still no LLM. Run with no
+argument for an interactive prompt.
+
+### How the retrieval core works
+
+```
+log line ─▶ normalize ─▶ hybrid search (top ~10) ─▶ rerank ─▶ top 3
+                          ├─ semantic (meaning)      cross-encoder
+                          └─ keyword (BM25)          (reads log+technique together)
+                          fused with RRF
+```
+
+- **Reranker:** `cross-encoder/ms-marco-MiniLM-L-6-v2` — small, CPU-friendly.
+- **Note on inputs:** cleaner *behaviour descriptions* ("mimikatz read lsass
+  memory") retrieve more accurately than raw, noisy SIEM logs. Turning a raw log
+  into a plain-language behaviour description is a later step (Phase B / the LLM),
+  which lifts accuracy on raw logs further.
