@@ -8,9 +8,10 @@ logs to **MITRE ATT&CK** techniques and suggests a grounded response.
 This is a clean-room learning + portfolio project built on open, public data only.
 The full plan, decisions, and checkpoint status live in [`CLAUDE.md`](CLAUDE.md).
 
-**Status:** Checkpoint 2 complete — the retrieval core works (log in → hybrid
-search → rerank → top 3), with NO LLM yet. The LLM (grounded answer writer) comes
-in Checkpoint 3.
+**Status:** Checkpoint 3 complete — the full pipeline works end-to-end: a log line
+goes in, and a grounded answer comes out (technique ID(s) + evidence + suggested
+mitigation), written by a free hosted LLM. Checkpoint 4 (API + UI + deploy) is
+optional/last.
 
 ## Project layout
 
@@ -27,12 +28,17 @@ mitre-attack-mapper/
 │   ├── vector_store.py # LanceDB hybrid store: vector + keyword search
 │   ├── hybrid_search.py# Checkpoint 2: semantic + keyword search fused with RRF
 │   ├── reranker.py     # Checkpoint 2: local cross-encoder reranker
-│   └── retrieval.py    # Checkpoint 2: log -> hybrid search -> rerank -> top 3
+│   ├── retrieval.py    # Checkpoint 2: log -> hybrid search -> rerank -> top 3
+│   ├── llm.py          # Checkpoint 3: swappable OpenAI-compatible LLM wrapper
+│   ├── prompt.py       # Checkpoint 3: builds the grounded prompt (grounding rule)
+│   └── pipeline.py     # Checkpoint 3: retrieve -> prompt -> LLM -> answer
 ├── scripts/            # Runnable helper scripts you invoke by hand
 │   ├── load_attack_data.py  # Checkpoint 1a: download + print ATT&CK techniques
 │   ├── build_index.py       # Checkpoint 1: build the searchable index
 │   ├── search.py            # Checkpoint 1: manual similarity search
-│   └── retrieve.py          # Checkpoint 2: log in -> top-3 techniques out
+│   ├── retrieve.py          # Checkpoint 2: log in -> top-3 techniques out
+│   └── analyze_log.py       # Checkpoint 3: log in -> full grounded answer out
+├── .env.example        # Template for LLM config (copy to .env, add your key)
 └── data/               # Downloaded STIX + built index (git-ignored; rebuildable)
 ```
 
@@ -121,3 +127,37 @@ log line ─▶ normalize ─▶ hybrid search (top ~10) ─▶ rerank ─▶ to
   memory") retrieve more accurately than raw, noisy SIEM logs. Turning a raw log
   into a plain-language behaviour description is a later step (Phase B / the LLM),
   which lifts accuracy on raw logs further.
+
+**5. (Checkpoint 3) Full pipeline — grounded answer from the hosted LLM:**
+
+One-time setup (get a **free** Groq key — no credit card):
+
+```bash
+cp .env.example .env
+# then edit .env and paste your key:  LLM_API_KEY=gsk_...
+```
+
+Get the key at <https://console.groq.com/keys>. Then run:
+
+```bash
+./venv/bin/python scripts/analyze_log.py "Sysmon EventID 10 ProcessAccess SourceImage=mimi.exe TargetImage=lsass.exe"
+```
+
+It retrieves the top techniques, then asks the LLM to write a **grounded** answer:
+technique ID(s), the exact evidence quoted from the log, and a suggested
+mitigation — using ONLY the retrieved real ATT&CK data (it never invents codes).
+
+### The LLM is swappable (no lock-in)
+
+The LLM lives behind a thin wrapper ([src/llm.py](src/llm.py)) that speaks the
+standard OpenAI-compatible API. Switching providers is an **env-var change only**
+(no code change) — set `LLM_BASE_URL`, `LLM_API_KEY`, `LLM_MODEL` in `.env`:
+
+| Provider | `LLM_BASE_URL` | Example model |
+|---|---|---|
+| **Groq** (default) | `https://api.groq.com/openai/v1` | `openai/gpt-oss-20b` (free tier) |
+| OpenRouter | `https://openrouter.ai/api/v1` | a `:free` model |
+| Mistral | `https://api.mistral.ai/v1` | `mistral-small-latest` |
+| Gemini | `https://generativelanguage.googleapis.com/v1beta/openai` | `gemini-2.0-flash` |
+
+The model runs on the **provider's servers**, so no GPU is needed on this laptop.

@@ -172,9 +172,10 @@ an unproven piece. When something breaks, it's in the piece just added.
       top 3. *Done when:* pasting a sample log reliably surfaces the right
       technique. (Testable with NO LLM — proves retrieval before generation.)
       ✅ 2026-09-23
-- [ ] **Checkpoint 3 — Generation.** Log + top techniques + mitigations → LLM
+- [x] **Checkpoint 3 — Generation.** Log + top techniques + mitigations → LLM
       (hosted, wrapped) with grounding rule → mapping + evidence + mitigation.
       *Done when:* a log in gives a complete grounded answer out (command line).
+      ✅ 2026-09-23
 - [ ] **Checkpoint 4 — API + UI + deploy.** FastAPI wrapper + minimal web page +
       Docker → deployed to a URL. *Done when:* it's live and shareable.
       **OPTIONAL / STRETCH GOAL — save for last.** See "Deploy vs. eval" below.
@@ -247,4 +248,16 @@ an unproven piece. When something breaks, it's in the piece just added.
       logs (~top-3 40% on the hardest labelled logs). Closing that gap is the
       Phase B "log → plain-language behaviour" step (later, uses the LLM).
       Kept small CPU-only models per spec (a heavier reranker was too slow here).
-- Next: Checkpoint 3 — Generation (LLM writes the grounded answer). NOT started.
+- [x] **Checkpoint 3 — Generation.** src/ modules: llm.py (thin, swappable
+      OpenAI-compatible wrapper; reads LLM_BASE_URL / LLM_API_KEY / LLM_MODEL from
+      .env; provider = Groq), prompt.py (builds the grounded prompt + grounding
+      rule: use ONLY retrieved IDs, cite log evidence, mitigation from provided
+      ones), pipeline.py (retrieve → prompt → LLM). Entry point:
+      scripts/analyze_log.py. Config: .env (gitignored) + .env.example template.
+      Model: openai/gpt-oss-20b (Groq free tier — the big Llama models 404 on
+      free keys). Verified end-to-end on 4 logs: T1003.001, T1490, T1053.005,
+      T1136.001 — each returned technique + quoted evidence + real M-code
+      mitigation. Done 2026-09-23.
+- Full local pipeline (Phase A + B) now works end-to-end with no LLM lock-in.
+- Next: Checkpoint 4 — API + UI + deploy (OPTIONAL / stretch). NOT started.
+  Recommended before deploy: local eval using sample_logs.json (Phase two).

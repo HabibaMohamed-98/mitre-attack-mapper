@@ -22,3 +22,8 @@ numpy==1.26.4
 # --- Hybrid-search store: vector + full-text (BM25) in one embedded DB ---
 lancedb==0.25.3
 tantivy==0.26.2   # backs LanceDB's full-text (keyword) index
+
+# --- Hosted LLM (Checkpoint 3): OpenAI-compatible client + .env loader ---
+# The LLM runs on the provider's servers (default: Groq), so no GPU is needed.
+openai==3.19.0
+python-dotenv==1.2.3
