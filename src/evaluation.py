@@ -40,14 +40,27 @@ def extract_predicted_ids(answer: str) -> list[str]:
     primary answer.
     """
     picks: list[str] = []
+    saw_technique_line = False
     for line in answer.splitlines():
-        # Only trust IDs the model put on a "Technique:" line — not IDs it might
-        # mention while explaining evidence.
-        if re.match(r"\s*technique\s*:", line, flags=re.IGNORECASE):
-            picks.extend(_TECHNIQUE_ID.findall(line))
+        # Only trust the ID the model put RIGHT AFTER "Technique:" — that's its
+        # label. IDs later on the line (or elsewhere) are explanation, not picks.
+        # The `\**` bits tolerate markdown bold like "**Technique:**".
+        if re.match(r"\s*\**\s*technique\s*\**\s*:", line, flags=re.IGNORECASE):
+            saw_technique_line = True
+            label = re.match(
+                r"\s*\**\s*technique\s*\**\s*:\s*\**\s*(T\d{4}(?:\.\d{3})?)\b",
+                line,
+                flags=re.IGNORECASE,
+            )
+            if label:
+                picks.append(label.group(1))
 
-    if not picks:
-        # Fallback: the model didn't use our exact format — take any IDs present.
+    if not saw_technique_line:
+        # Fallback ONLY when the model ignored our format entirely. If it DID write
+        # a "Technique:" line with no ID (e.g. "Technique: None — no candidate
+        # fits"), that's a deliberate "no match" and must stay empty — otherwise
+        # IDs it mentions while explaining WHY nothing fits would be miscounted
+        # as picks (and the benign log would look like a false positive).
         picks = _TECHNIQUE_ID.findall(answer)
 
     # De-duplicate while preserving order (first pick stays first).

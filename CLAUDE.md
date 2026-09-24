@@ -267,6 +267,10 @@ an unproven piece. When something breaks, it's in the piece just added.
       7/17, family 8/17; benign control → no technique asserted (correct).
       Finding: the LLM picks correctly every time the right technique is in the
       top 3 — the bottleneck is RETRIEVAL recall on noisy raw logs, not generation.
+      Run: `./venv/bin/python scripts/evaluate.py` (add `--no-llm` for retrieval
+      only). Answer parsing counts only the ID right after "Technique:", so an
+      explicit "Technique: None" stays a no-match (re-verified 2026-09-24, same
+      scores).
 - Next (not started): improve retrieval recall (e.g. enrich snippets with ATT&CK
   procedure examples, or a log → behaviour normalization step), re-run eval to
   compare. Checkpoint 4 (API + UI + deploy) remains OPTIONAL / stretch.
