@@ -34,7 +34,7 @@ from pathlib import Path
 from typing import Optional
 
 from dotenv import load_dotenv
-from openai import OpenAI, RateLimitError
+from openai import InternalServerError, OpenAI, RateLimitError
 
 # Load variables from a local .env file (if present) into the environment, so
 # `os.environ` picks up LLM_BASE_URL / LLM_API_KEY / LLM_MODEL. Safe to call even
@@ -125,14 +125,24 @@ class LLMClient:
                 break
             except RateLimitError as err:
                 delay = _retry_delay(err, attempt)
-                if attempt == max_attempts or delay > MAX_RATE_LIMIT_WAIT:
+                # Some providers (e.g. Gemini) name a DAILY quota in the error but
+                # still suggest a short retry delay — retrying can't help then.
+                daily = "PerDay" in str(err) or "per day" in str(err).lower()
+                if attempt == max_attempts or daily or delay > MAX_RATE_LIMIT_WAIT:
                     raise LLMQuotaError(
-                        f"Rate limit reached for {self.model} (the provider asks to "
-                        f"wait ~{delay:.0f}s). On Groq's free tier this usually "
-                        "means the per-day token quota is used up; it frees up "
-                        "gradually over a rolling 24 hours."
+                        f"Rate limit reached for {self.model}"
+                        + (" — the provider reports a DAILY quota is used up."
+                           if daily else f" (the provider asks to wait ~{delay:.0f}s).")
+                        + " Free-tier daily quotas refill over time (Groq: rolling "
+                        "24 hours; Gemini: daily reset)."
                     ) from err
                 time.sleep(delay)
+            except InternalServerError:
+                # 5xx = the provider is temporarily overloaded or hiccuping (e.g.
+                # Gemini's "model is experiencing high demand"). Back off and retry.
+                if attempt == max_attempts:
+                    raise
+                time.sleep(float(2 ** attempt))
 
         # One choice, its message, its text content.
         reply = (response.choices[0].message.content or "").strip()
@@ -152,9 +162,10 @@ class LLMClient:
         return self.cache_dir / (hashlib.sha256(key.encode()).hexdigest() + ".json")
 
 
-# Waits longer than this aren't a per-minute hiccup — they mean the daily quota is
-# exhausted, so there's no point sitting and retrying.
-MAX_RATE_LIMIT_WAIT = 60.0
+# Waits up to this long are a per-minute limit worth sitting out (Gemini's free
+# tier often asks for ~60s). Longer waits mean a daily quota is used up, so there's
+# no point retrying.
+MAX_RATE_LIMIT_WAIT = 120.0
 
 
 class LLMQuotaError(RuntimeError):
