@@ -25,6 +25,33 @@ from src.reranker import Reranker
 from src.query_rewriter import QueryRewriter
 
 
+def _keep_parents_visible(ranked: list[dict], top_k: int, max_extra: int = 2) -> list[dict]:
+    """
+    Take the top_k reranked candidates, and if any shown sub-technique's PARENT is
+    in the candidate pool but ranked below the cut, show the parent too.
+
+    Why: the reranker tends to score long, specific sub-technique descriptions
+    above their shorter parent, so all the visible slots can go to variants
+    (T1055.001, T1055.002, ...) and the parent T1055 never reaches the LLM. Then
+    the LLM can't follow grounding rule 6 ("choose the parent when the evidence
+    fits several sub-techniques equally"). At most `max_extra` parents are added,
+    to keep the prompt small.
+    """
+    top = list(ranked[:top_k])
+    shown = {c["attack_id"] for c in top}
+    below_cut = {c["attack_id"]: c for c in ranked[top_k:]}
+    added = 0
+    for candidate in list(top):
+        parent = candidate["attack_id"].split(".", 1)[0]
+        if parent != candidate["attack_id"] and parent not in shown and parent in below_cut:
+            top.append(below_cut[parent])
+            shown.add(parent)
+            added += 1
+            if added == max_extra:
+                break
+    return top
+
+
 class RetrievalPipeline:
     """Retrieve + rerank techniques for an input log line."""
 
@@ -63,7 +90,8 @@ class RetrievalPipeline:
         # so when we have a plain-language description we rerank against it (it
         # struggled on raw log syntax). Otherwise, the normalized log.
         rerank_query = description or normalize_query(log_line)
-        top = self.reranker.rerank(rerank_query, found, top_k=top_k)
+        ranked = self.reranker.rerank(rerank_query, found, top_k=len(found))
+        top = _keep_parents_visible(ranked, top_k)
 
         return {"description": description, "pool": found, "top": top}
 

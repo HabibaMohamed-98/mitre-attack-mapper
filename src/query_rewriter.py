@@ -28,8 +28,13 @@ from src.llm import LLMClient
 
 REWRITE_SYSTEM_PROMPT = """You translate raw security log lines into a short, plain-language description of the behaviour they show, as a security analyst would describe it.
 
-Rules:
-- Write 1-3 sentences. Say what the actor did, with which tool/command, and what it accomplishes (e.g. "reads credentials from LSASS process memory", "creates a remote thread in another process to inject code", "an interactive remote desktop logon").
+Cover all three of these in ONE short plain-prose paragraph (at most 80 words, no headings, no bold, no bullet points):
+1. MECHANISM - which program, interpreter, or service carried out the action and how (e.g. "the Windows command shell cmd.exe executes commands", "PowerShell runs an encoded script", "a remote desktop session logs on").
+2. OPERATION - the generic action performed on the system, in plain terms (e.g. "modifies a registry value", "creates a local user account", "downloads a file from an external server", "transfers a large volume of data out to an external host", "writes into another process's memory").
+3. PURPOSE - what the actor likely achieves (e.g. "to steal credentials", "to persist across reboots", "to weaken a security protection").
+If the log shows several distinct actions, describe each one.
+
+Also:
 - Explain what event IDs, logon types, and command-line flags MEAN rather than repeating them.
 - Do NOT write any MITRE ATT&CK technique IDs (like T1003) or tactic IDs. Describe behaviour only.
 - If the activity looks like ordinary, benign use, say so plainly instead of inventing something malicious."""

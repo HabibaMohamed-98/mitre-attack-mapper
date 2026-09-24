@@ -140,4 +140,29 @@ class HybridSearcher:
             record = dict(records_by_id[attack_id])  # copy so we don't mutate cache
             record["rrf_score"] = fused[attack_id]
             results.append(record)
+        return self._add_missing_parents(results)
+
+    def _add_missing_parents(self, results: list[dict]) -> list[dict]:
+        """
+        For every sub-technique in the results, make sure its PARENT is there too.
+
+        Why: ATT&CK is a hierarchy (T1055 Process Injection -> T1055.001 DLL
+        Injection, T1055.002 PE Injection, ...). Sub-techniques have longer, more
+        specific descriptions, so they often out-score their parent and crowd it
+        out entirely. Then, when a log's evidence fits several variants equally,
+        the LLM has no honest option — it's forced to guess a specific one. Adding
+        the parent lets the reranker and LLM pick the level of detail the evidence
+        actually supports. The parent inherits its best child's retrieval score.
+        """
+        present = {r["attack_id"] for r in results}
+        wanted: dict[str, float] = {}
+        for r in results:
+            parent = r["attack_id"].split(".", 1)[0]
+            if parent != r["attack_id"] and parent not in present:
+                wanted[parent] = max(wanted.get(parent, 0.0), r["rrf_score"])
+
+        for record in self.store.get_by_ids(list(wanted)):
+            record = dict(record)
+            record["rrf_score"] = wanted[record["attack_id"]]
+            results.append(record)
         return results

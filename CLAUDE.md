@@ -294,5 +294,22 @@ an unproven piece. When something breaks, it's in the piece just added.
       T1048 and T1112 (not retrieved), T1055 (sub-technique T1055.002 chosen).
       Caveat: 17 synthetic logs, and they guided these changes — validate on
       new labelled data (e.g. Atomic Red Team) before trusting the numbers.
-- Next (not started): held-out eval on fresh labelled logs. Checkpoint 4
+- [~] **Second accuracy round (2026-09-24) — full-LLM eval NOT yet scored**
+      (Groq free daily quota, 200k tokens/day for gpt-oss-20b, ran out mid-run).
+      General fixes for the remaining misses:
+      1. Parent techniques: search adds the parent of any retrieved sub-technique
+         (HybridSearcher._add_missing_parents), and the LLM is shown the parent of
+         any shown sub-technique (retrieval._keep_parents_visible, up to 2 extra).
+      2. Rewrite prompt covers MECHANISM / OPERATION / PURPOSE, ≤80 words.
+      3. Grounding rules 6–7: sub-technique only with sub-technique-specific
+         evidence, else the parent; primary technique listed first.
+      4. Eval: strict "primary" score (the LLM's first pick must be right).
+      5. Quota tooling: eval caches LLM answers in data/llm_cache/ (gitignored;
+         reruns and interrupted runs are free), reports tokens used; LLMQuotaError
+         stops immediately on a daily-limit 429 instead of retrying.
+      Verified so far (local, no LLM): shown-to-LLM 9 → 11/17.
+      Honesty note: these fixes were chosen by studying the same 17 logs, so
+      scores on them are optimistic — the real test is fresh, unseen labelled logs.
+- Next: run the pending full eval once quota frees (`scripts/evaluate.py`,
+  resumes from cache), then a held-out eval on fresh labelled logs. Checkpoint 4
   (API + UI + deploy) remains OPTIONAL / stretch.

@@ -120,6 +120,19 @@ class VectorStore:
         """How many techniques are indexed."""
         return self.table.count_rows()
 
+    def get_by_ids(self, attack_ids: list[str]) -> list[dict]:
+        """Fetch stored records by exact ATT&CK ID (unknown IDs are skipped)."""
+        if not attack_ids:
+            return []
+        # IDs only contain T, digits and dots, so quoting them is safe.
+        id_list = ", ".join(f"'{aid}'" for aid in attack_ids)
+        return (
+            self.table.search()
+            .where(f"attack_id IN ({id_list})")
+            .limit(len(attack_ids))
+            .to_list()
+        )
+
     def semantic_search(self, query_vector: list[float], k: int = 5) -> list[dict]:
         """
         Vector search: find the k techniques whose meaning is closest to the

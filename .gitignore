@@ -14,6 +14,7 @@ __pycache__/
 # All of it is rebuildable from scripts, so we don't commit it.
 data/*.json
 data/lancedb/
+data/llm_cache/
 
 # But DO keep the sample_logs.json test set (it lives at the repo root, not in data/)
 # and keep the data/ folder itself around via a placeholder.

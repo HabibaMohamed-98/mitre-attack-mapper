@@ -32,7 +32,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from openai import AuthenticationError, APIConnectionError, APIStatusError  # noqa: E402
 from src.pipeline import MappingPipeline       # noqa: E402
-from src.llm import LLMConfigError             # noqa: E402
+from src.llm import LLMConfigError, LLMQuotaError  # noqa: E402
 
 
 def main() -> None:
@@ -65,6 +65,9 @@ def main() -> None:
             "       key starting with 'gsk_', with no quotes or spaces.\n"
             "       Get/verify a key at https://console.groq.com/keys"
         )
+        return
+    except LLMQuotaError as err:
+        print(f"\n[quota] {err}")
         return
     except APIConnectionError:
         print("\n[network] Could not reach the LLM provider. Check your internet connection.")

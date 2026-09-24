@@ -37,6 +37,12 @@ evidence. If the log does not contain evidence for a candidate, do not select it
 Refer to it by its M-ID and name.
 4. If none of the candidates genuinely match the log, say so plainly instead of forcing a match.
 5. Be concise. Do not add techniques "just in case". Prefer the 1-2 best-supported matches.
+6. Pick the right level of detail. Choose a sub-technique (e.g. T1055.002) ONLY if the log \
+contains evidence specific to that sub-technique that would NOT fit its sibling sub-techniques. \
+If the evidence fits several sub-techniques of the same parent equally well, choose the parent \
+technique (e.g. T1055) instead.
+7. List your PRIMARY technique first: the one that best describes the core action the log \
+directly records. Add a second technique only if the log also directly shows a clearly separate action.
 """
 
 

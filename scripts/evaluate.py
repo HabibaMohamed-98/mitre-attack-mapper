@@ -15,7 +15,9 @@ Two halves, reported separately (so a wrong answer tells you which half to fix):
      * shown@5    : is it among the 5 candidates the LLM actually chooses from?
 
   GENERATION — given those candidates, did the LLM name the right one?
-     * exact  : the LLM's answer names the exact expected ID
+     * primary: the LLM's FIRST (main) pick is exactly right — the strict score,
+                and the one to watch: listing extra techniques can't inflate it
+     * exact  : the exact expected ID appears anywhere in the answer
      * family : it names the right parent technique (right area, maybe wrong
                 sub-technique) — a softer credit
 
@@ -52,6 +54,10 @@ from src.evaluation import (                               # noqa: E402
 
 PROJECT_ROOT = Path(__file__).parent.parent
 SAMPLES_FILE = PROJECT_ROOT / "sample_logs.json"
+# Every LLM request/response is cached here (gitignored). Re-running the eval only
+# pays for calls whose prompts changed, and a run stopped by a rate limit resumes
+# for free. Delete this folder to force fresh answers.
+LLM_CACHE_DIR = PROJECT_ROOT / "data" / "llm_cache"
 
 # How many candidates the hybrid stage returns before reranking (recall@10).
 POOL_TOP_K = 10
@@ -76,6 +82,17 @@ def accepted_ids(expected: str, replacements: dict[str, str]) -> set[str]:
 
 
 def main() -> None:
+    from src.llm import LLMQuotaError
+    try:
+        run()
+    except LLMQuotaError as err:
+        print(f"\n[quota] {err}")
+        print("Every LLM answer received so far is cached in data/llm_cache/, so "
+              "re-running later resumes where this stopped at no extra cost.")
+        sys.exit(1)
+
+
+def run() -> None:
     use_llm = "--no-llm" not in sys.argv
     show_rewrites = "--show-rewrites" in sys.argv
 
@@ -85,7 +102,7 @@ def main() -> None:
     if use_llm:
         from src.llm import LLMClient, LLMConfigError
         try:
-            llm = LLMClient()
+            llm = LLMClient(cache_dir=LLM_CACHE_DIR)
         except LLMConfigError:
             print("\n[note] No LLM key set; running RETRIEVAL-ONLY (local, no rewrite).\n")
             use_llm = False
@@ -103,7 +120,7 @@ def main() -> None:
     # Counters. "Scored" = the labelled (non-benign) logs we can grade by ID.
     scored = 0
     recall_at_10 = rerank_at_1 = rerank_at_3 = shown_at_k = 0
-    gen_exact = gen_family = 0
+    gen_primary = gen_exact = gen_family = 0
     benign_result = None
     notes: list[str] = []
     rows = []
@@ -161,10 +178,12 @@ def main() -> None:
         gen_mark = "(skipped)"
         if use_llm:
             families = {family(i) for i in ok}
+            primary_ok = bool(predicted_ids) and predicted_ids[0] in ok
+            gen_primary += primary_ok
             if ok & set(predicted_ids):
                 gen_exact += 1
                 gen_family += 1
-                gen_mark = "exact"
+                gen_mark = "exact" if primary_ok else f"2nd-pick{predicted_ids}"
             elif any(family(p) in families for p in predicted_ids):
                 gen_family += 1
                 gen_mark = f"family{predicted_ids}"
@@ -194,11 +213,12 @@ def main() -> None:
     print(f"  recall@10 : {pct(recall_at_10)}   <- correct technique is in the candidate pool")
     print(f"  rerank@1  : {pct(rerank_at_1)}   <- ranked #1 after rerank")
     print(f"  rerank@3  : {pct(rerank_at_3)}   <- in the top 3")
-    print(f"  shown@{DEFAULT_TOP_K}   : {pct(shown_at_k)}   <- among the {DEFAULT_TOP_K} candidates the LLM chooses from")
+    print(f"  shown@{DEFAULT_TOP_K}   : {pct(shown_at_k)}   <- among the candidates the LLM chooses from (top {DEFAULT_TOP_K} + up to 2 parents)")
 
     if use_llm:
         print("\nGENERATION (given candidates, does the LLM pick right?):")
-        print(f"  exact hit : {pct(gen_exact)}   <- answer names the exact technique ID")
+        print(f"  primary   : {pct(gen_primary)}   <- the LLM's MAIN pick is exactly right (strict)")
+        print(f"  exact hit : {pct(gen_exact)}   <- exact technique ID appears anywhere in the answer")
         print(f"  family hit: {pct(gen_family)}   <- answer names the right parent technique")
     else:
         print("\nGENERATION: skipped (no LLM). Run without --no-llm to score it.")
@@ -208,6 +228,10 @@ def main() -> None:
 
     for note in sorted(set(notes)):
         print(f"\nNote: {note}")
+
+    if llm is not None:
+        print(f"\nLLM usage this run: {llm.api_calls} API calls, {llm.tokens_used:,} tokens "
+              f"({llm.cache_hits} answers reused from cache)")
 
     print("\nNote: sample_logs.json is SYNTHETIC (representative, not a published")
     print("benchmark) — use these numbers to compare changes, not as absolute truth.")
