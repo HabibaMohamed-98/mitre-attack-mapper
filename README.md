@@ -161,3 +161,15 @@ standard OpenAI-compatible API. Switching providers is an **env-var change only*
 | Gemini | `https://generativelanguage.googleapis.com/v1beta/openai` | `gemini-2.0-flash` |
 
 The model runs on the **provider's servers**, so no GPU is needed on this laptop.
+
+**6. Evaluate against the labelled logs (local):**
+
+```bash
+./venv/bin/python scripts/evaluate.py            # retrieval + generation
+./venv/bin/python scripts/evaluate.py --no-llm   # retrieval only, no API key
+```
+
+Runs every log in `sample_logs.json` and reports **retrieval** (is the right
+technique in the candidates / top 3 / #1?) and **generation** (does the LLM's
+answer name it?) separately, so a wrong answer points to the half to fix. The
+data is synthetic — use the numbers to compare changes, not as a benchmark.

@@ -259,5 +259,14 @@ an unproven piece. When something breaks, it's in the piece just added.
       T1136.001 — each returned technique + quoted evidence + real M-code
       mitigation. Done 2026-09-23.
 - Full local pipeline (Phase A + B) now works end-to-end with no LLM lock-in.
-- Next: Checkpoint 4 — API + UI + deploy (OPTIONAL / stretch). NOT started.
-  Recommended before deploy: local eval using sample_logs.json (Phase two).
+- [x] **Local eval (Phase two, first piece).** src/evaluation.py (pure scoring:
+      extract predicted IDs, exact vs family match) + scripts/evaluate.py (runs
+      all 18 sample_logs.json entries; reports RETRIEVAL and GENERATION
+      separately; `--no-llm` = retrieval only). Baseline 2026-09-24:
+      retrieval recall@10 8/17, rerank@1 6/17, rerank@3 7/17; generation exact
+      7/17, family 8/17; benign control → no technique asserted (correct).
+      Finding: the LLM picks correctly every time the right technique is in the
+      top 3 — the bottleneck is RETRIEVAL recall on noisy raw logs, not generation.
+- Next (not started): improve retrieval recall (e.g. enrich snippets with ATT&CK
+  procedure examples, or a log → behaviour normalization step), re-run eval to
+  compare. Checkpoint 4 (API + UI + deploy) remains OPTIONAL / stretch.
