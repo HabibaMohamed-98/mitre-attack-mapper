@@ -9,6 +9,9 @@ __pycache__/
 
 # Environment / secrets (API keys for the hosted LLM, added in a later checkpoint)
 .env
+# Any provider-specific backups (.env.groq, .env.gemini, ...) hold real keys too.
+.env.*
+!.env.example
 
 # Large / derived data (MITRE ATT&CK STIX download + the built search index).
 # All of it is rebuildable from scripts, so we don't commit it.
