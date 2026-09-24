@@ -271,6 +271,28 @@ an unproven piece. When something breaks, it's in the piece just added.
       only). Answer parsing counts only the ID right after "Technique:", so an
       explicit "Technique: None" stays a no-match (re-verified 2026-09-24, same
       scores).
-- Next (not started): improve retrieval recall (e.g. enrich snippets with ATT&CK
-  procedure examples, or a log → behaviour normalization step), re-run eval to
-  compare. Checkpoint 4 (API + UI + deploy) remains OPTIONAL / stretch.
+- [x] **Accuracy improvements (2026-09-24).** Guided by the eval, each change
+      general (not keyed to specific test logs):
+      1. Index text cleanup (snippets.clean_description): strip citations,
+         markdown links, <code> tags; file paths -> file name. Rebuilt index.
+      2. Query cleanup (normalize_query): file paths -> file name (drive letter
+         required, so registry keys stay intact). Stopped path-heavy techniques
+         (e.g. T1546.008) matching every Windows log.
+      3. Phase B step 1 — src/query_rewriter.py: the LLM rewrites the log into a
+         plain-language behaviour description (NO technique IDs; any that slip
+         through are stripped). Retrieval searches with the log AND the
+         description (search_many, fused with RRF); rerank uses the description.
+      4. The LLM now chooses from the top 5 reranked candidates (was 3).
+      5. Eval credits MITRE's official replacement for revoked IDs
+         (attack_data.revoked_replacements; T1070.001 -> T1685.005).
+      6. Robustness: llm.chat retries on 429 rate limits; prompt trims each
+         candidate description to ~600 chars (Groq free tier = 8,000 tokens/min).
+      Result (full eval): recall@10 8→13/17, shown@5 →13/17, generation exact
+      7→13/17, family 8→14/17, benign still correctly unmapped. Local-only
+      (--no-llm) recall@10 11/17. Cost: 2 LLM calls per log (rewrite + answer).
+      Remaining misses: T1059.003 (LLM picked T1033 discovery — defensible),
+      T1048 and T1112 (not retrieved), T1055 (sub-technique T1055.002 chosen).
+      Caveat: 17 synthetic logs, and they guided these changes — validate on
+      new labelled data (e.g. Atomic Red Team) before trusting the numbers.
+- Next (not started): held-out eval on fresh labelled logs. Checkpoint 4
+  (API + UI + deploy) remains OPTIONAL / stretch.

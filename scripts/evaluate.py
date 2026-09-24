@@ -9,18 +9,25 @@ reach it?". They're different; you do NOT deploy to evaluate.
 Two halves, reported separately (so a wrong answer tells you which half to fix):
 
   RETRIEVAL  — did the search find the right technique at all?
-     * recall@10 : is the correct technique in the ~10 hybrid candidates?
-                   (If not, the reranker and LLM never even had a chance.)
-     * rerank@1 / rerank@3 : after reranking, is it #1 / in the top 3?
+     * recall@10  : is the correct technique in the ~10 hybrid candidates?
+                    (If not, the reranker and LLM never even had a chance.)
+     * rerank@1/3 : after reranking, is it #1 / in the top 3?
+     * shown@5    : is it among the 5 candidates the LLM actually chooses from?
 
-  GENERATION — given good candidates, did the LLM name the right one?
+  GENERATION — given those candidates, did the LLM name the right one?
      * exact  : the LLM's answer names the exact expected ID
      * family : it names the right parent technique (right area, maybe wrong
                 sub-technique) — a softer credit
 
+Fair scoring for an evolving ATT&CK: if MITRE has REVOKED an expected ID and
+replaced it (e.g. T1070.001 -> T1685.005 in the current release), the official
+replacement also counts as correct. The mapping comes from MITRE's own
+"revoked-by" data — see attack_data.revoked_replacements().
+
 Usage:
-  ./venv/bin/python scripts/evaluate.py            # retrieval + generation (needs API key)
-  ./venv/bin/python scripts/evaluate.py --no-llm   # retrieval only (no key needed)
+  ./venv/bin/python scripts/evaluate.py                    # full: rewrite + retrieval + generation
+  ./venv/bin/python scripts/evaluate.py --show-rewrites    # also print each log's rewrite
+  ./venv/bin/python scripts/evaluate.py --no-llm           # retrieval only, local, no key
 """
 
 import json
@@ -34,22 +41,19 @@ os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from src.embedder import Embedder                         # noqa: E402
-from src.vector_store import open_store                   # noqa: E402
-from src.hybrid_search import HybridSearcher, normalize_query  # noqa: E402
-from src.reranker import Reranker                          # noqa: E402
+from src.attack_data import revoked_replacements          # noqa: E402
+from src.retrieval import RetrievalPipeline                # noqa: E402
 from src.prompt import build_prompt                        # noqa: E402
+from src.pipeline import DEFAULT_TOP_K                     # noqa: E402
 from src.evaluation import (                               # noqa: E402
     extract_predicted_ids,
-    is_exact_hit,
-    is_family_hit,
+    family,
 )
 
 PROJECT_ROOT = Path(__file__).parent.parent
 SAMPLES_FILE = PROJECT_ROOT / "sample_logs.json"
 
-# How many candidates the hybrid stage returns before reranking. recall@10 is
-# measured against this pool.
+# How many candidates the hybrid stage returns before reranking (recall@10).
 POOL_TOP_K = 10
 
 
@@ -58,33 +62,50 @@ def load_samples() -> list[dict]:
     return json.loads(SAMPLES_FILE.read_text())["samples"]
 
 
+def accepted_ids(expected: str, replacements: dict[str, str]) -> set[str]:
+    """
+    The IDs that count as correct for `expected`: itself, plus MITRE's official
+    replacement if it was revoked (following chains of revocations).
+    """
+    ids = {expected}
+    current = expected
+    while current in replacements and replacements[current] not in ids:
+        current = replacements[current]
+        ids.add(current)
+    return ids
+
+
 def main() -> None:
     use_llm = "--no-llm" not in sys.argv
+    show_rewrites = "--show-rewrites" in sys.argv
 
-    print("Loading models + index...")
-    embedder = Embedder()
-    searcher = HybridSearcher(open_store(), embedder)
-    reranker = Reranker()
-
-    # The LLM is only built if we're doing the generation half. This lets the
-    # retrieval eval run with NO API key at all.
+    # The LLM powers two steps: the query REWRITE (retrieval) and the final ANSWER
+    # (generation). Without a key, the eval falls back to local-only retrieval.
     llm = None
     if use_llm:
         from src.llm import LLMClient, LLMConfigError
         try:
             llm = LLMClient()
-        except LLMConfigError as err:
-            print(f"\n[note] No LLM key set ({err.__class__.__name__}); "
-                  "running RETRIEVAL-ONLY. Use --no-llm to silence this.\n")
+        except LLMConfigError:
+            print("\n[note] No LLM key set; running RETRIEVAL-ONLY (local, no rewrite).\n")
             use_llm = False
+
+    print("Loading models + index...")
+    rewriter = None
+    if use_llm:
+        from src.query_rewriter import QueryRewriter
+        rewriter = QueryRewriter(llm)
+    retriever = RetrievalPipeline(rewriter=rewriter)
+    replacements = revoked_replacements()
 
     samples = load_samples()
 
     # Counters. "Scored" = the labelled (non-benign) logs we can grade by ID.
     scored = 0
-    recall_at_10 = rerank_at_1 = rerank_at_3 = 0
+    recall_at_10 = rerank_at_1 = rerank_at_3 = shown_at_k = 0
     gen_exact = gen_family = 0
     benign_result = None
+    notes: list[str] = []
     rows = []
 
     for smp in samples:
@@ -92,63 +113,78 @@ def main() -> None:
         log = smp["log"]
         difficulty = smp.get("difficulty", "?")
 
-        # --- RETRIEVAL: pool + rerank (local, no LLM) ---
-        query = normalize_query(log)
-        pool = searcher.search(query, pool=20, top_k=POOL_TOP_K)
-        pool_ids = [c["attack_id"] for c in pool]
-        reranked = reranker.rerank(query, pool, top_k=3)
-        rerank_ids = [c["attack_id"] for c in reranked]
+        # --- RETRIEVAL: (rewrite) + hybrid pool + rerank ---
+        result = retriever.retrieve_detailed(
+            log, pool=20, candidates=POOL_TOP_K, top_k=DEFAULT_TOP_K
+        )
+        pool_ids = [c["attack_id"] for c in result["pool"]]
+        shown = result["top"]                       # what the LLM gets to choose from
+        shown_ids = [c["attack_id"] for c in shown]
 
-        # --- GENERATION: ask the LLM using those reranked candidates ---
+        if show_rewrites and result["description"]:
+            print(f"\n[{smp['id']}] {expected}\n  log:     {log[:110]}\n"
+                  f"  rewrite: {result['description']}")
+
+        # --- GENERATION: the LLM picks from the shown candidates ---
         predicted_ids: list[str] = []
-        if use_llm and llm is not None:
-            system_prompt, user_prompt = build_prompt(log, reranked)
-            answer = llm.chat(system_prompt, user_prompt)
-            predicted_ids = extract_predicted_ids(answer)
+        if use_llm:
+            system_prompt, user_prompt = build_prompt(log, shown)
+            predicted_ids = extract_predicted_ids(llm.chat(system_prompt, user_prompt))
 
         # The benign log has no correct technique — score it separately.
+        # "Correct" = the LLM did NOT assert an attack technique for normal activity.
         if expected.startswith("none"):
-            # "Correct" = the system did NOT confidently assert a technique.
-            benign_result = ("no technique asserted" if not predicted_ids
-                             else f"asserted {predicted_ids} (false positive)")
+            if not use_llm:
+                benign_result = "not scored (needs the LLM to answer)"
+            elif predicted_ids:
+                benign_result = f"FALSE POSITIVE — mapped to {predicted_ids}"
+            else:
+                benign_result = "correct — no technique asserted"
             rows.append((expected, difficulty, "-", "-", "benign", "-"))
             continue
 
         scored += 1
-        r10 = expected in pool_ids
-        r1 = rerank_ids[:1] == [expected]
-        r3 = expected in rerank_ids
+        ok = accepted_ids(expected, replacements)
+        if len(ok) > 1:
+            notes.append(f"{expected} was revoked by MITRE -> also accepting "
+                         f"{', '.join(sorted(ok - {expected}))}")
+
+        r10 = bool(ok & set(pool_ids))
+        r1 = shown_ids[0] in ok if shown_ids else False
+        r3 = bool(ok & set(shown_ids[:3]))
+        rk = bool(ok & set(shown_ids))
         recall_at_10 += r10
         rerank_at_1 += r1
         rerank_at_3 += r3
+        shown_at_k += rk
 
-        gen_mark = ""
+        gen_mark = "(skipped)"
         if use_llm:
-            if is_exact_hit(expected, predicted_ids):
+            families = {family(i) for i in ok}
+            if ok & set(predicted_ids):
                 gen_exact += 1
                 gen_family += 1
                 gen_mark = "exact"
-            elif is_family_hit(expected, predicted_ids):
+            elif any(family(p) in families for p in predicted_ids):
                 gen_family += 1
-                gen_mark = "family"
+                gen_mark = f"family{predicted_ids}"
             else:
                 gen_mark = f"miss{predicted_ids or ''}"
 
-        rows.append((
-            expected, difficulty,
-            "Y" if r10 else "·",
-            "Y" if r1 else ("3" if r3 else "·"),
-            gen_mark if use_llm else "(skipped)",
-            rerank_ids[0],
-        ))
+        # rerank column: Y = #1, 3 = top 3, 5 = top 5 (shown to LLM), · = not shown
+        rank_mark = "Y" if r1 else ("3" if r3 else (str(DEFAULT_TOP_K) if rk else "·"))
+        rows.append((expected, difficulty, "Y" if r10 else "·", rank_mark,
+                     gen_mark, shown_ids[0] if shown_ids else "-"))
 
     # ---- Per-log table ----
-    print("\n" + "=" * 78)
-    print(f"{'expected':11} {'difficulty':11} {'rec@10':7} {'rerank':7} {'generation':16} top1")
-    print("-" * 78)
+    print("\n" + "=" * 84)
+    mode = "rewrite + hybrid + rerank" if use_llm else "hybrid + rerank (local, no rewrite)"
+    print(f"Retrieval mode: {mode}")
+    print(f"{'expected':13} {'difficulty':11} {'rec@10':7} {'rerank':7} {'generation':24} top1")
+    print("-" * 84)
     for expected, diff, r10, rnk, gen, top1 in rows:
-        print(f"{expected:11} {diff:11} {r10:^7} {rnk:^7} {gen:16} {top1}")
-    print("=" * 78)
+        print(f"{expected:13} {diff:11} {r10:^7} {rnk:^7} {gen:24} {top1}")
+    print("=" * 84)
 
     # ---- Summary ----
     def pct(n: int) -> str:
@@ -156,8 +192,9 @@ def main() -> None:
 
     print("\nRETRIEVAL (can search even find it?):")
     print(f"  recall@10 : {pct(recall_at_10)}   <- correct technique is in the candidate pool")
-    print(f"  rerank@1  : {pct(rerank_at_1)}   <- correct technique ranked #1 after rerank")
-    print(f"  rerank@3  : {pct(rerank_at_3)}   <- correct technique in the top 3")
+    print(f"  rerank@1  : {pct(rerank_at_1)}   <- ranked #1 after rerank")
+    print(f"  rerank@3  : {pct(rerank_at_3)}   <- in the top 3")
+    print(f"  shown@{DEFAULT_TOP_K}   : {pct(shown_at_k)}   <- among the {DEFAULT_TOP_K} candidates the LLM chooses from")
 
     if use_llm:
         print("\nGENERATION (given candidates, does the LLM pick right?):")
@@ -168,6 +205,9 @@ def main() -> None:
 
     if benign_result is not None:
         print(f"\nBENIGN control log: {benign_result}")
+
+    for note in sorted(set(notes)):
+        print(f"\nNote: {note}")
 
     print("\nNote: sample_logs.json is SYNTHETIC (representative, not a published")
     print("benchmark) — use these numbers to compare changes, not as absolute truth.")

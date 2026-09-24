@@ -49,7 +49,7 @@ def main() -> None:
     # (retrieval alone still works via scripts/retrieve.py, with no key needed).
     try:
         print("\nLoading models + index, then contacting the LLM...")
-        pipeline = MappingPipeline(top_k=3)
+        pipeline = MappingPipeline()
     except LLMConfigError as err:
         print(f"\n[config] {err}")
         return

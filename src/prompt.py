@@ -40,6 +40,22 @@ Refer to it by its M-ID and name.
 """
 
 
+# Cap each candidate's description in the prompt. The opening of an ATT&CK
+# description defines the technique — that's what the LLM needs to choose between
+# candidates. The full text of 5 candidates (~2,700 tokens) blew through the Groq
+# free tier's 8,000 tokens/minute; trimmed, a prompt is roughly a third of that.
+MAX_DESCRIPTION_CHARS = 600
+
+
+def _shorten(text: str, limit: int = MAX_DESCRIPTION_CHARS) -> str:
+    """Trim to `limit` characters, cutting at the last full sentence if possible."""
+    if len(text) <= limit:
+        return text
+    cut = text[:limit]
+    last_period = cut.rfind(". ")
+    return (cut[: last_period + 1] if last_period > limit // 2 else cut.rstrip()) + " …"
+
+
 def _format_candidate(index: int, technique: dict) -> str:
     """Render one retrieved technique as a numbered block for the prompt."""
     tactics = ", ".join(technique["tactics"]) or "Unknown"
@@ -52,7 +68,7 @@ def _format_candidate(index: int, technique: dict) -> str:
 
     # The snippet's text already holds "ID | name | tactic\ndescription"; we show
     # the description part for context but present the ID/name/tactic cleanly.
-    description = technique["text"].split("\n", 1)[-1].strip()
+    description = _shorten(technique["text"].split("\n", 1)[-1].strip())
 
     return (
         f"[{index}] {technique['attack_id']} — {technique['name']}  (Tactic: {tactics})\n"

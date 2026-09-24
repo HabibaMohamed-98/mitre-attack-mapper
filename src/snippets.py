@@ -22,7 +22,34 @@ This module is pure text-shaping: a technique dict in → a string (and a metada
 dict) out. No models, no files — trivially testable.
 """
 
+import re
+
 from src.attack_data import Technique
+
+
+def clean_description(text: str) -> str:
+    """
+    Strip formatting noise out of an ATT&CK description, keeping the meaning.
+
+    MITRE's descriptions are written for the website, so they're full of:
+      - citation markers:  "(Citation: Talos Olympic Destroyer 2018)"  (~93% of them)
+      - markdown links:    "[Data Destruction](https://attack.mitre.org/techniques/T1485)"
+      - HTML code tags:    "<code>C:\\Windows\\System32\\sethc.exe</code>"
+    None of that describes attacker behaviour, but search still "reads" it: every
+    citation adds the same filler words to hundreds of snippets, and long Windows
+    paths make techniques that happen to quote paths match every log that has paths.
+
+    We keep the useful part of each: the link's visible text ("Data Destruction")
+    and the file NAME from a path ("sethc.exe") — only the noise goes.
+    """
+    text = re.sub(r"\(Citation:[^)]*\)", "", text)                 # drop citations
+    text = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", text)            # [text](url) -> text
+    text = re.sub(r"</?code>", "", text)                             # drop <code> tags
+    # File paths -> file name (C:\a\b\x.exe -> x.exe). The drive letter is REQUIRED
+    # so registry paths (HKLM\...\CurrentVersion\Run) keep their meaningful keys.
+    text = re.sub(r"\b[A-Za-z]:(?:\\[\w .$-]+)*\\([\w.-]+)", r"\1", text)
+    text = re.sub(r"[ \t]+", " ", text)                              # tidy spaces
+    return re.sub(r"\n{3,}", "\n\n", text).strip()
 
 
 def build_snippet(technique: Technique) -> str:
@@ -36,9 +63,9 @@ def build_snippet(technique: Technique) -> str:
     # Join multiple tactics with commas; fall back to a clear placeholder.
     tactics = ", ".join(technique["tactics"]) or "Unknown"
 
-    # A compact, readable header line followed by the description.
+    # A compact, readable header line followed by the CLEANED description.
     header = f"{technique['attack_id']} | {technique['name']} | Tactic: {tactics}"
-    return f"{header}\n{technique['description']}".strip()
+    return f"{header}\n{clean_description(technique['description'])}".strip()
 
 
 def build_record(technique: Technique) -> dict:

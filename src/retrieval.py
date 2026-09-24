@@ -1,18 +1,19 @@
 """
-retrieval.py — the retrieval CORE: glue hybrid search + reranking into one call.
+retrieval.py — the retrieval CORE: glue rewrite + hybrid search + reranking.
 
-This is the full Phase B retrieval step (no LLM):
+    log line
+      -> (optional) rewrite into a plain-language behaviour description  [LLM]
+      -> hybrid search with the log AND the description (wide, ~10)      [local]
+      -> rerank (sharp top N)                                            [local]
 
-    log line  ->  hybrid search (wide ~10)  ->  rerank (sharp top 3)  ->  results
+It's a thin orchestrator: the real work lives in query_rewriter.py,
+hybrid_search.py and reranker.py. Keeping this separate means the pipeline, the
+eval, and (later) the API get "the top techniques for this log" from ONE place.
 
-It's a thin orchestrator: the real work lives in hybrid_search.py and
-reranker.py. Keeping this separate means the entry-point script (and, later, the
-LLM generator and the API) can get "the top techniques for this log" from ONE
-place without knowing the internals.
+The rewrite step is optional: without an LLM (no API key, or `--no-llm` in the
+eval) retrieval still works — purely locally, just with lower recall on raw logs.
 
-Models are loaded once when the pipeline is created, then reused across queries —
-loading the embedder, store, and reranker each takes a moment, so we don't want
-to redo it per log line.
+Models are loaded once when the pipeline is created, then reused across queries.
 """
 
 from typing import Optional
@@ -21,17 +22,50 @@ from src.embedder import Embedder
 from src.vector_store import open_store, VectorStore
 from src.hybrid_search import HybridSearcher, normalize_query
 from src.reranker import Reranker
+from src.query_rewriter import QueryRewriter
 
 
 class RetrievalPipeline:
     """Retrieve + rerank techniques for an input log line."""
 
-    def __init__(self, store: Optional[VectorStore] = None) -> None:
-        # Load the three components once and hold onto them.
+    def __init__(
+        self,
+        store: Optional[VectorStore] = None,
+        rewriter: Optional[QueryRewriter] = None,
+    ) -> None:
+        # Load the local components once and hold onto them.
         self.embedder = Embedder()
         self.store = store or open_store()
         self.searcher = HybridSearcher(self.store, self.embedder)
         self.reranker = Reranker()
+        # None = no rewrite step (pure local retrieval).
+        self.rewriter = rewriter
+
+    def retrieve_detailed(
+        self, log_line: str, pool: int = 20, candidates: int = 10, top_k: int = 3
+    ) -> dict:
+        """
+        Run retrieval and return every intermediate result (the eval uses these to
+        score each stage separately):
+
+          {"description": str | None,   # the plain-language rewrite, if any
+           "pool": [...],               # ~10 fused hybrid-search candidates
+           "top": [...]}                # the top_k after reranking, best first
+        """
+        # 1. REWRITE (optional): describe the behaviour in ATT&CK-like language.
+        description = self.rewriter.rewrite(log_line) if self.rewriter else None
+
+        # 2. RETRIEVE: search with the original log AND the description, fused.
+        queries = [log_line] + ([description] if description else [])
+        found = self.searcher.search_many(queries, pool=pool, top_k=candidates)
+
+        # 3. RERANK: the cross-encoder was trained on natural-language questions,
+        # so when we have a plain-language description we rerank against it (it
+        # struggled on raw log syntax). Otherwise, the normalized log.
+        rerank_query = description or normalize_query(log_line)
+        top = self.reranker.rerank(rerank_query, found, top_k=top_k)
+
+        return {"description": description, "pool": found, "top": top}
 
     def retrieve(
         self, log_line: str, pool: int = 20, candidates: int = 10, top_k: int = 3
@@ -39,19 +73,9 @@ class RetrievalPipeline:
         """
         Return the top_k techniques for `log_line`, best first.
 
-        Steps:
-          1. Hybrid search -> `candidates` (~10) fused candidates.
-          2. Rerank those -> `top_k` (default 3) sharpest matches.
-
         Each result dict carries: attack_id, name, tactics, mitigations, text,
         rrf_score (from retrieval), and rerank_score (from reranking).
         """
-        # Normalize the raw log once; use it for both retrieval and reranking so
-        # every stage reads the same clean tokens (see hybrid_search.normalize_query).
-        query = normalize_query(log_line)
-
-        # 1. RETRIEVE: wide net of candidates via hybrid search.
-        found = self.searcher.search(query, pool=pool, top_k=candidates)
-
-        # 2. RERANK: sharpen to the best top_k.
-        return self.reranker.rerank(query, found, top_k=top_k)
+        return self.retrieve_detailed(
+            log_line, pool=pool, candidates=candidates, top_k=top_k
+        )["top"]

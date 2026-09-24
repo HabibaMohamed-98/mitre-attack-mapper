@@ -26,9 +26,11 @@ and set their key + a model id they host.
 """
 
 import os
+import re
+import time
 
 from dotenv import load_dotenv
-from openai import OpenAI
+from openai import OpenAI, RateLimitError
 
 # Load variables from a local .env file (if present) into the environment, so
 # `os.environ` picks up LLM_BASE_URL / LLM_API_KEY / LLM_MODEL. Safe to call even
@@ -78,14 +80,38 @@ class LLMClient:
 
         temperature=0.0 keeps the answer focused and repeatable — we want the
         model to stick to the grounded facts we give it, not get creative.
+
+        Free tiers have per-minute limits (Groq free: 8,000 tokens/minute). When
+        we hit one, the provider answers "429 — try again in N seconds". Instead
+        of crashing, we wait that long and retry (a few times at most).
         """
-        response = self.client.chat.completions.create(
-            model=self.model,
-            temperature=temperature,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
-            ],
-        )
-        # One choice, its message, its text content.
-        return response.choices[0].message.content.strip()
+        max_attempts = 6
+        for attempt in range(1, max_attempts + 1):
+            try:
+                response = self.client.chat.completions.create(
+                    model=self.model,
+                    temperature=temperature,
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt},
+                    ],
+                )
+                # One choice, its message, its text content.
+                return (response.choices[0].message.content or "").strip()
+            except RateLimitError as err:
+                if attempt == max_attempts:
+                    raise
+                time.sleep(_retry_delay(err, attempt))
+        raise RuntimeError("unreachable")
+
+
+def _retry_delay(err: RateLimitError, attempt: int) -> float:
+    """
+    How long to wait after a rate-limit error. Groq's message says e.g.
+    "Please try again in 2.04s" — use that (plus a small cushion) when present,
+    otherwise back off exponentially: 2s, 4s, 8s, ...
+    """
+    match = re.search(r"try again in ([\d.]+)s", str(err))
+    if match:
+        return float(match.group(1)) + 0.5
+    return float(2 ** attempt)

@@ -130,6 +130,28 @@ def extract_techniques(stix_file: Optional[Path] = None) -> list[Technique]:
     return techniques
 
 
+def revoked_replacements(stix_file: Optional[Path] = None) -> dict[str, str]:
+    """
+    Map each REVOKED technique ID to the ID MITRE replaced it with.
+
+    ATT&CK evolves: MITRE sometimes retires a technique and moves it under a new
+    ID, recording that with a "revoked-by" relationship. E.g. in the current
+    release T1070.001 (Clear Windows Event Logs) is revoked by T1685.005. Labels
+    written against an older ATT&CK version still use the old ID, so the eval
+    uses this map to also accept the official replacement. We only follow what
+    MITRE's own data says — no hand-written equivalences.
+    """
+    attack = load_attack(stix_file)
+    replacements: dict[str, str] = {}
+    for tech in attack.get_techniques(remove_revoked_deprecated=False):
+        if not tech.get("revoked", False):
+            continue
+        new_obj = attack.get_revoking_object(tech.id)
+        if new_obj is not None:
+            replacements[attack.get_attack_id(tech.id)] = attack.get_attack_id(new_obj.id)
+    return replacements
+
+
 # Allow a quick manual check: `./venv/bin/python -m src.attack_data`
 if __name__ == "__main__":
     items = extract_techniques()

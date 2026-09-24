@@ -123,10 +123,12 @@ log line ─▶ normalize ─▶ hybrid search (top ~10) ─▶ rerank ─▶ to
 ```
 
 - **Reranker:** `cross-encoder/ms-marco-MiniLM-L-6-v2` — small, CPU-friendly.
-- **Note on inputs:** cleaner *behaviour descriptions* ("mimikatz read lsass
-  memory") retrieve more accurately than raw, noisy SIEM logs. Turning a raw log
-  into a plain-language behaviour description is a later step (Phase B / the LLM),
-  which lifts accuracy on raw logs further.
+- **Query rewrite (full pipeline only):** raw logs and ATT&CK use different words
+  ("Logon Type: 10" vs "Remote Desktop Protocol"). In `analyze_log.py` and the
+  full eval, the LLM first rewrites the log into a plain-language behaviour
+  description (no technique IDs allowed), and search runs on the log AND the
+  description together. The LLM then chooses from the top 5 candidates.
+  `retrieve.py` stays fully local and skips this step.
 
 **5. (Checkpoint 3) Full pipeline — grounded answer from the hosted LLM:**
 
