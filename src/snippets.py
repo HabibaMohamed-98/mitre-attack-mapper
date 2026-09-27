@@ -68,6 +68,42 @@ def build_snippet(technique: Technique) -> str:
     return f"{header}\n{clean_description(technique['description'])}".strip()
 
 
+# Cap on how much example text each technique gets. Some techniques have 500+
+# examples; unlimited text would drown the description and (because keyword search
+# penalises very long documents) could even make those techniques harder to find.
+MAX_EXAMPLE_CHARS = 2500
+
+
+def build_keyword_text(technique: Technique, snippet: str) -> str:
+    """
+    The text KEYWORD search runs over: the normal snippet PLUS MITRE's real-world
+    procedure examples.
+
+    Why only keyword search: examples are valuable because they name concrete
+    tools and commands ("Mimikatz", "vssadmin delete shadows", "schtasks /create")
+    — exactly the words that appear in logs but not in ATT&CK's abstract
+    descriptions. Keyword search matches those words directly. The embedding model
+    only reads roughly the first 250 words anyway, and an earlier experiment showed
+    long example-stuffed text confuses the reranker — so the embedding, the
+    reranker and the LLM keep using the plain snippet.
+    """
+    seen: set[str] = set()
+    parts: list[str] = []
+    used = 0
+    for raw in technique.get("examples", []):
+        example = clean_description(raw)
+        if not example or example in seen:
+            continue
+        if used + len(example) > MAX_EXAMPLE_CHARS:
+            break
+        seen.add(example)
+        parts.append(example)
+        used += len(example)
+    if not parts:
+        return snippet
+    return snippet + "\nReal-world examples: " + " ".join(parts)
+
+
 def build_record(technique: Technique) -> dict:
     """
     Build the full record we hand to the store: the snippet text PLUS metadata.
@@ -80,6 +116,7 @@ def build_record(technique: Technique) -> dict:
     the store column is a simple list of strings; the structured form still lives
     in attack_data if we need it.
     """
+    snippet = build_snippet(technique)
     return {
         "attack_id": technique["attack_id"],
         "name": technique["name"],
@@ -88,7 +125,8 @@ def build_record(technique: Technique) -> dict:
         "mitigations": [
             f"{m['id']}: {m['name']}" for m in technique["mitigations"]
         ],
-        "text": build_snippet(technique),
+        "text": snippet,
+        "keyword_text": build_keyword_text(technique, snippet),
     }
 
 

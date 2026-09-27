@@ -310,6 +310,41 @@ an unproven piece. When something breaks, it's in the piece just added.
       Verified so far (local, no LLM): shown-to-LLM 9 → 11/17.
       Honesty note: these fixes were chosen by studying the same 17 logs, so
       scores on them are optimistic — the real test is fresh, unseen labelled logs.
-- Next: run the pending full eval once quota frees (`scripts/evaluate.py`,
-  resumes from cache), then a held-out eval on fresh labelled logs. Checkpoint 4
-  (API + UI + deploy) remains OPTIONAL / stretch.
+- [x] **Held-out eval (2026-09-27) — the honest numbers.** Pipeline frozen at
+      commit 0a5386f (src/ untouched). scripts/build_heldout_set.py builds
+      data/heldout_atomic.json from Atomic Red Team (atomics/Indexes/index.yaml,
+      sha256 08f8bd07…, seed 42): one random command-line test per technique,
+      turned into a process-creation line, technique IDs + Atomic folder names
+      scrubbed (0 leaks). 341 samples. Eval: `--samples`, `--limit`, `--no-table`.
+      Results (unseen data):
+        search only, all 341: recall@10 49%, shown to LLM 31%, rerank@1 13%.
+        full system, random 25: recall@10 17/25, shown 10/25, primary exact
+        6/25 (24%), right family 9/25 (36%). 50 calls, ~88k Groq tokens.
+      Compare: 13/17 (76%) on sample_logs.json, which guided the design —
+      that number was optimistic. On unseen data the weakest link is the
+      RERANKER (right technique found for 68% but shown to the LLM for 40%),
+      then the LLM (picked correctly 6 of the 10 times it was shown).
+      Caveats: 25 is a small sample (±~15%); inputs are bare command lines
+      across 341 techniques incl. obscure ones — harder than typical SIEM logs.
+      RULE: don't tune on this set. Any change must be judged on a NEW draw
+      (different seed), and this seed-42 set then counts as seen.
+- [x] **Improvement round on a DEV set (2026-09-27), no LLM quota used.**
+      Builder now takes `--seed/--out/--exclude` and skips Atomic tests used by
+      other sets (91 techniques have only one test, so a new seed alone would
+      repeat them). Sets (zero overlap between any two):
+        data/heldout_atomic.json  seed 42, 341 — used, now "seen"
+        data/dev_atomic.json      seed 7,  250 — for trying changes
+        data/test_atomic.json     seed 99, 193 — LOCKED, run once at the end
+      Two fixes, measured search-only on the dev set:
+        1. LLM sees top 10 candidates (pipeline.DEFAULT_TOP_K 5 -> 10).
+        2. Keyword index includes MITRE's real-world procedure examples
+           (attack_data._extract_examples -> snippets.build_keyword_text ->
+           vector_store "keyword_text" column; FTS index moved to it, capped at
+           2,500 chars/technique). Embedding, reranker and LLM prompt still use
+           the plain snippet ("text").
+      Dev results: right technique found 46% -> 52%; reaches the LLM 28% ->
+      40% (fix 1) -> 45% (both). sample_logs local: shown 11 -> 13/17.
+      Cost: answer prompts are larger (10 candidates).
+- Next: one full LLM run on the locked test set to get the honest end-to-end
+  number (193 logs is too many for one day's quota — use `--limit`). Then
+  Checkpoint 4 (API + UI + deploy), OPTIONAL / stretch.

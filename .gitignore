@@ -18,6 +18,7 @@ __pycache__/
 data/*.json
 data/lancedb/
 data/llm_cache/
+data/external/
 
 # But DO keep the sample_logs.json test set (it lives at the repo root, not in data/)
 # and keep the data/ folder itself around via a placeholder.

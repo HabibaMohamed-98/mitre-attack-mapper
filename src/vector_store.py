@@ -54,6 +54,8 @@ def _schema() -> pa.Schema:
             pa.field("is_subtechnique", pa.bool_()),
             pa.field("mitigations", pa.list_(pa.string())),
             pa.field("text", pa.string()),
+            # Snippet + real-world examples; used ONLY by keyword search.
+            pa.field("keyword_text", pa.string()),
             # Fixed-size vector column — this is what enables vector search.
             pa.field("vector", pa.list_(pa.float32(), EMBEDDING_DIM)),
         ]
@@ -96,9 +98,10 @@ def build_index(
         TABLE_NAME, data=rows, schema=_schema(), mode="overwrite"
     )
 
-    # Build the BM25 full-text index on the snippet text. This is what makes
-    # keyword search fast and real (not just substring matching).
-    table.create_fts_index("text", replace=True)
+    # Build the BM25 full-text index on keyword_text (the snippet + MITRE's
+    # real-world procedure examples). This is what makes keyword search fast and
+    # real (not just substring matching), and lets it match tool/command names.
+    table.create_fts_index("keyword_text", replace=True)
 
     return table.count_rows()
 

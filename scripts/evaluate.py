@@ -30,6 +30,12 @@ Usage:
   ./venv/bin/python scripts/evaluate.py                    # full: rewrite + retrieval + generation
   ./venv/bin/python scripts/evaluate.py --show-rewrites    # also print each log's rewrite
   ./venv/bin/python scripts/evaluate.py --no-llm           # retrieval only, local, no key
+
+Held-out set (built by scripts/build_heldout_set.py — NOT used for tuning):
+  ./venv/bin/python scripts/evaluate.py --samples data/heldout_atomic.json --no-llm
+  ./venv/bin/python scripts/evaluate.py --samples data/heldout_atomic.json --limit 25
+  (--limit N takes the first N samples; the builder shuffled them, so it's a random subset.
+   --no-table prints only the summary, handy for large sets.)
 """
 
 import json
@@ -63,9 +69,22 @@ LLM_CACHE_DIR = PROJECT_ROOT / "data" / "llm_cache"
 POOL_TOP_K = 10
 
 
+def _arg_value(flag: str) -> str | None:
+    """Return the value after `flag` on the command line (e.g. --limit 25), if given."""
+    if flag in sys.argv:
+        i = sys.argv.index(flag)
+        if i + 1 < len(sys.argv):
+            return sys.argv[i + 1]
+        sys.exit(f"{flag} needs a value")
+    return None
+
+
 def load_samples() -> list[dict]:
-    """Load the labelled test logs."""
-    return json.loads(SAMPLES_FILE.read_text())["samples"]
+    """Load the labelled test logs (default: sample_logs.json; or --samples PATH)."""
+    path = Path(_arg_value("--samples") or SAMPLES_FILE)
+    samples = json.loads(path.read_text())["samples"]
+    limit = _arg_value("--limit")
+    return samples[: int(limit)] if limit else samples
 
 
 def accepted_ids(expected: str, replacements: dict[str, str]) -> set[str]:
@@ -197,12 +216,14 @@ def run() -> None:
 
     # ---- Per-log table ----
     print("\n" + "=" * 84)
+    print(f"Test set: {_arg_value('--samples') or SAMPLES_FILE.name}  ({len(samples)} logs)")
     mode = "rewrite + hybrid + rerank" if use_llm else "hybrid + rerank (local, no rewrite)"
     print(f"Retrieval mode: {mode}")
     print(f"{'expected':13} {'difficulty':11} {'rec@10':7} {'rerank':7} {'generation':24} top1")
     print("-" * 84)
-    for expected, diff, r10, rnk, gen, top1 in rows:
-        print(f"{expected:13} {diff:11} {r10:^7} {rnk:^7} {gen:24} {top1}")
+    if "--no-table" not in sys.argv:
+        for expected, diff, r10, rnk, gen, top1 in rows:
+            print(f"{expected:13} {diff:11} {r10:^7} {rnk:^7} {gen:24} {top1}")
     print("=" * 84)
 
     # ---- Summary ----
@@ -233,8 +254,12 @@ def run() -> None:
         print(f"\nLLM usage this run: {llm.api_calls} API calls, {llm.tokens_used:,} tokens "
               f"({llm.cache_hits} answers reused from cache)")
 
-    print("\nNote: sample_logs.json is SYNTHETIC (representative, not a published")
-    print("benchmark) — use these numbers to compare changes, not as absolute truth.")
+    if _arg_value("--samples"):
+        print("\nNote: held-out set — do NOT tune the pipeline on these results, or the")
+        print("set becomes 'seen'. Small subsets (--limit) swing a lot: 1 log in 25 = 4%.")
+    else:
+        print("\nNote: sample_logs.json is SYNTHETIC and guided the design — use these")
+        print("numbers to compare changes, not as absolute truth.")
 
 
 if __name__ == "__main__":

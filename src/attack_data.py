@@ -12,6 +12,9 @@ For each Enterprise technique AND sub-technique we pull out:
   - tactics       e.g. ["Credential Access"]     (the "why" / attacker goal)
   - is_subtechnique  True/False
   - mitigations   e.g. [{"id": "M1040", "name": "Behavior Prevention..."}]
+  - examples      MITRE's "procedure examples": real-world reports of attackers
+                  using the technique, often naming the exact tool or command
+                  (e.g. "deleted shadow copies using `vssadmin delete shadows`")
 
 Why a module (not a script): extraction is a reusable step. The index builder
 imports `extract_techniques()`; a future eval or API can too. Keeping it pure
@@ -53,6 +56,7 @@ class Technique(TypedDict):
     tactics: list[str]
     is_subtechnique: bool
     mitigations: list[Mitigation]
+    examples: list[str]
 
 
 def load_attack(stix_file: Optional[Path] = None) -> MitreAttackData:
@@ -101,6 +105,19 @@ def _extract_mitigations(attack: MitreAttackData, technique) -> list[Mitigation]
     return results
 
 
+def _extract_examples(attack: MitreAttackData, technique) -> list[str]:
+    """
+    MITRE's procedure examples for a technique: each is a "uses" relationship from
+    a threat group, campaign, or piece of software, whose description says HOW it
+    used the technique. Raw text (links/citations are cleaned later, in snippets).
+    """
+    return [
+        rel["description"]
+        for rel in attack.get_procedure_examples_by_technique(technique.id)
+        if rel.get("description")
+    ]
+
+
 def extract_techniques(stix_file: Optional[Path] = None) -> list[Technique]:
     """
     Extract every active Enterprise technique + sub-technique as clean records.
@@ -124,6 +141,7 @@ def extract_techniques(stix_file: Optional[Path] = None) -> list[Technique]:
                     tech.get("x_mitre_is_subtechnique", False)
                 ),
                 "mitigations": _extract_mitigations(attack, tech),
+                "examples": _extract_examples(attack, tech),
             }
         )
 

@@ -26,11 +26,12 @@ from src.prompt import build_prompt
 from src.llm import LLMClient
 from src.query_rewriter import QueryRewriter
 
-# How many reranked candidates the LLM chooses from. The eval showed the LLM picks
-# the right technique whenever it's shown it, and the small reranker often places
-# the right one 4th-5th rather than top 3. Showing 5 converts more of those into
-# correct answers; the grounding rule still stops it from picking a poor match.
-DEFAULT_TOP_K = 5
+# How many reranked candidates the LLM chooses from. On unseen (held-out) data,
+# search found the right technique for 17/25 logs but the small reranker placed it
+# too low for the LLM to see in 7 of them — it was being thrown away. Showing 10
+# keeps more of those; the grounding rule still stops the LLM picking a poor match.
+# Cost: bigger answer prompts (descriptions are trimmed to ~600 chars each).
+DEFAULT_TOP_K = 10
 
 
 class MappingPipeline:
