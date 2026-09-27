@@ -36,11 +36,23 @@ Held-out set (built by scripts/build_heldout_set.py — NOT used for tuning):
   ./venv/bin/python scripts/evaluate.py --samples data/heldout_atomic.json --limit 25
   (--limit N takes the first N samples; the builder shuffled them, so it's a random subset.
    --no-table prints only the summary, handy for large sets.)
+
+Quota safety cap:
+  --token-budget 120000   stop cleanly once this many LLM tokens were used this run
+                          (e.g. 60% of Groq's 200k/day), reporting the logs completed.
+
+Investigation report (read it like an analyst would):
+  --report data/reports/run.md   write, for EVERY log: the log, what the system
+                                 understood, the options shown to the LLM, the
+                                 LLM's full answer (technique + evidence +
+                                 mitigation), a plain-English verdict saying WHERE
+                                 it went wrong if it did, and time + tokens.
 """
 
 import json
 import os
 import sys
+import time
 import warnings
 from pathlib import Path
 
@@ -144,10 +156,23 @@ def run() -> None:
     notes: list[str] = []
     rows = []
 
+    report: list[dict] = []   # per-log details for --report
+    budget = int(_arg_value("--token-budget") or 0)
+    stopped_early = False
+
     for smp in samples:
+        # Quota safety cap: stop BEFORE starting a log once the budget is spent,
+        # so we never use up the whole day's free quota.
+        if budget and llm is not None and llm.tokens_used >= budget:
+            stopped_early = True
+            break
+
         expected = smp["expected_technique_id"]
         log = smp["log"]
         difficulty = smp.get("difficulty", "?")
+
+        started = time.time()
+        tokens_before = llm.tokens_used if llm is not None else 0
 
         # --- RETRIEVAL: (rewrite) + hybrid pool + rerank ---
         result = retriever.retrieve_detailed(
@@ -163,9 +188,21 @@ def run() -> None:
 
         # --- GENERATION: the LLM picks from the shown candidates ---
         predicted_ids: list[str] = []
+        answer = ""
         if use_llm:
             system_prompt, user_prompt = build_prompt(log, shown)
-            predicted_ids = extract_predicted_ids(llm.chat(system_prompt, user_prompt))
+            answer = llm.chat(system_prompt, user_prompt)
+            predicted_ids = extract_predicted_ids(answer)
+
+        entry = {
+            "id": smp["id"], "log": log, "expected": expected,
+            "expected_name": smp.get("expected_technique_name", ""),
+            "rewrite": result["description"],
+            "shown": [f"{c['attack_id']} {c['name']}" for c in shown],
+            "answer": answer, "seconds": time.time() - started,
+            "tokens": (llm.tokens_used - tokens_before) if llm is not None else 0,
+        }
+        report.append(entry)
 
         # The benign log has no correct technique — score it separately.
         # "Correct" = the LLM did NOT assert an attack technique for normal activity.
@@ -176,6 +213,10 @@ def run() -> None:
                 benign_result = f"FALSE POSITIVE — mapped to {predicted_ids}"
             else:
                 benign_result = "correct — no technique asserted"
+            entry["verdict"] = ("✅ Correctly left unmapped (ordinary activity)"
+                                if use_llm and not predicted_ids else
+                                f"❌ False alarm: mapped ordinary activity to {predicted_ids}"
+                                if use_llm else "not scored (no LLM)")
             rows.append((expected, difficulty, "-", "-", "benign", "-"))
             continue
 
@@ -208,6 +249,20 @@ def run() -> None:
                 gen_mark = f"family{predicted_ids}"
             else:
                 gen_mark = f"miss{predicted_ids or ''}"
+
+            # Plain-English verdict: if wrong, WHICH stage lost the answer.
+            if primary_ok:
+                entry["verdict"] = "✅ Correct"
+            elif ok & set(predicted_ids):
+                entry["verdict"] = "🟡 Right technique named, but not as the main answer"
+            elif any(family(p) in families for p in predicted_ids):
+                entry["verdict"] = "🟡 Right technique family, but a different specific variant"
+            elif rk:
+                entry["verdict"] = "❌ The LLM was shown the right technique but chose something else"
+            elif r10:
+                entry["verdict"] = "❌ Search found it, but it was ranked too low to reach the LLM"
+            else:
+                entry["verdict"] = "❌ Search never found the right technique"
 
         # rerank column: Y = #1, 3 = top 3, 5 = top 5 (shown to LLM), · = not shown
         rank_mark = "Y" if r1 else ("3" if r3 else (str(DEFAULT_TOP_K) if rk else "·"))
@@ -250,9 +305,17 @@ def run() -> None:
     for note in sorted(set(notes)):
         print(f"\nNote: {note}")
 
+    if stopped_early:
+        print(f"\n[budget] Stopped early: the {budget:,}-token budget was reached. "
+              f"Scores above cover only the {scored} logs completed.")
     if llm is not None:
         print(f"\nLLM usage this run: {llm.api_calls} API calls, {llm.tokens_used:,} tokens "
               f"({llm.cache_hits} answers reused from cache)")
+
+    if _arg_value("--report"):
+        path = Path(_arg_value("--report"))
+        write_report(path, report, llm, scored, gen_primary, recall_at_10, shown_at_k)
+        print(f"\nInvestigation report written to {path}")
 
     if _arg_value("--samples"):
         print("\nNote: held-out set — do NOT tune the pipeline on these results, or the")
@@ -260,6 +323,41 @@ def run() -> None:
     else:
         print("\nNote: sample_logs.json is SYNTHETIC and guided the design — use these")
         print("numbers to compare changes, not as absolute truth.")
+
+
+def write_report(path: Path, report: list[dict], llm, scored: int,
+                 correct: int, found: int, shown: int) -> None:
+    """Write the per-log investigation report as Markdown (readable in any editor)."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    total_time = sum(e["seconds"] for e in report)
+    lines = [
+        "# Investigation report",
+        "",
+        f"Model: `{llm.model if llm else 'none (search only)'}` · Logs: {len(report)} · "
+        f"Test set: `{_arg_value('--samples') or SAMPLES_FILE.name}`",
+        "",
+        "| | Result |", "|---|---|",
+        f"| Search found the right technique | {found} / {scored} |",
+        f"| The right technique reached the LLM | {shown} / {scored} |",
+        f"| The LLM's main answer was right | {correct} / {scored} |",
+        f"| Average time per log | {total_time / max(len(report), 1):.1f} s |",
+        f"| Tokens used | {llm.tokens_used if llm else 0:,} |",
+        "",
+    ]
+    for n, e in enumerate(report, start=1):
+        lines += [
+            "---", "",
+            f"## Log {n} of {len(report)} — {e.get('verdict', '')}", "",
+            f"**Log:** `{e['log']}`", "",
+            f"**Correct answer:** {e['expected']} {e['expected_name']}", "",
+        ]
+        if e["rewrite"]:
+            lines += [f"**What the system understood:** {e['rewrite']}", ""]
+        lines += [f"**Options given to the LLM ({len(e['shown'])}):** " + "; ".join(e["shown"]), ""]
+        if e["answer"]:
+            lines += ["**The LLM's answer:**", "", "```", e["answer"], "```", ""]
+        lines += [f"*Time: {e['seconds']:.1f} s · Tokens: {e['tokens']:,}*", ""]
+    path.write_text("\n".join(lines))
 
 
 if __name__ == "__main__":

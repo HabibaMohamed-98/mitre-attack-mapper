@@ -380,5 +380,21 @@ an unproven piece. When something breaks, it's in the piece just added.
       Test plan (needs Groq quota): old prompts (commit 23be006, via a git
       worktree) vs new prompts on the SAME first 20 dev_atomic.json logs,
       ~180k tokens total. Judge on dev, not test_now (test_now was studied).
-- Next: run that before/after on dev. Checkpoint 4 (API + UI + deploy) remains
-  OPTIONAL / stretch.
+- [x] **End-to-end run after the shell fix (2026-09-27).** gpt-oss-120b (set per
+      run via LLM_MODEL env var; .env still says gpt-oss-20b), first 20 of
+      dev_atomic.json (now "seen"), commit 281063a. New eval options:
+      `--token-budget N` (stops cleanly before a log once N tokens are used) and
+      `--report PATH` (per-log Markdown: log, rewrite, options shown, the LLM's
+      full answer, plain-English verdict of WHERE it failed, time, tokens).
+      Report: data/reports/dev20_gpt-oss-120b.md (gitignored).
+      Result: found 12/20, reaches LLM 10/20, LLM main pick right 5/20 (25%).
+      Verdicts: 5 correct, 8 search never found it, 2 ranked too low, 4 LLM
+      chose another shown option (+1 right ID but not first). Shell-as-answer
+      dropped to 1 of 5 LLM misses (was 10 of 15). ~85k tokens; avg 28 s/log
+      (mostly 8k tokens/min rate-limit waits; a single log is ~8–10 s).
+      Progress so far: search-only on the same dev logs clearly improved
+      (reaches LLM 28% -> 45%), but end-to-end on unseen logs is flat at ~24%
+      (24% / 23% / 25% on DIFFERENT logs and models — not directly comparable).
+- Next: fair before/after — old code (23be006) on the SAME 20 dev logs with
+  gpt-oss-120b (~85k tokens; the "after" answers are cached). Checkpoint 4
+  (API + UI + deploy) remains OPTIONAL / stretch.
