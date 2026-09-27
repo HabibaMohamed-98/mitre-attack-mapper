@@ -41,8 +41,14 @@ Refer to it by its M-ID and name.
 contains evidence specific to that sub-technique that would NOT fit its sibling sub-techniques. \
 If the evidence fits several sub-techniques of the same parent equally well, choose the parent \
 technique (e.g. T1055) instead.
-7. List your PRIMARY technique first: the one that best describes the core action the log \
-directly records. Add a second technique only if the log also directly shows a clearly separate action.
+7. List your PRIMARY technique first: the technique for what the command or event actually DOES \
+(e.g. discovers computers or accounts, hides a file, creates a service, steals credentials). \
+Add a second technique only if the log also directly shows a clearly separate action.
+8. The shell or interpreter that ran a command (cmd.exe, PowerShell, bash, sh) is almost never \
+the primary technique, because nearly every command runs through one. Choose a "Command and \
+Scripting Interpreter" technique (T1059.x) as primary ONLY when how the interpreter was used is \
+itself the suspicious part (e.g. an encoded or obfuscated script, a hidden window, a script \
+launched by an Office document), or when no other candidate describes what the command does.
 """
 
 

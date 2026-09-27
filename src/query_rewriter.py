@@ -29,8 +29,8 @@ from src.llm import LLMClient
 REWRITE_SYSTEM_PROMPT = """You translate raw security log lines into a short, plain-language description of the behaviour they show, as a security analyst would describe it.
 
 Cover all three of these in ONE short plain-prose paragraph (at most 80 words, no headings, no bold, no bullet points):
-1. MECHANISM - which program, interpreter, or service carried out the action and how (e.g. "the Windows command shell cmd.exe executes commands", "PowerShell runs an encoded script", "a remote desktop session logs on").
-2. OPERATION - the generic action performed on the system, in plain terms (e.g. "modifies a registry value", "creates a local user account", "downloads a file from an external server", "transfers a large volume of data out to an external host", "writes into another process's memory").
+1. ACTION - what the command or event actually DOES, in plain terms (e.g. "lists all computers in the domain", "reads secrets from the Kubernetes cluster", "hides a file", "creates a new service", "modifies a registry value", "creates a local user account", "downloads a file from an external server", "writes into another process's memory").
+2. TOOL - the specific program or utility doing it (e.g. attrib.exe, sc.exe, kubectl, net.exe, reg.exe, vssadmin). The shell that launched it (cmd.exe, PowerShell, bash, sh) is usually just the vehicle: mention the shell only if HOW it was used is itself suspicious (an encoded or obfuscated script, a hidden window, launched by an Office document).
 3. PURPOSE - what the actor likely achieves (e.g. "to steal credentials", "to persist across reboots", "to weaken a security protection").
 If the log shows several distinct actions, describe each one.
 

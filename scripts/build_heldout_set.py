@@ -92,7 +92,9 @@ def fill_arguments(command: str, input_arguments: dict | None) -> str:
 
 def scrub(command: str) -> str:
     """Remove label leaks and tidy the command into one log-sized line."""
-    command = re.sub(r"\$?PathToAtomicsFolder", "C:\\tools", command, flags=re.IGNORECASE)
+    # A function replacement inserts the text literally. (As a plain string, the
+    # "\t" in "C:\tools" was read as a TAB, producing "C: ools" in the inputs.)
+    command = re.sub(r"\$?PathToAtomicsFolder", lambda _: r"C:\tools", command, flags=re.IGNORECASE)
     command = re.sub(r"atomic[-_ ]?red[-_ ]?team", "tools", command, flags=re.IGNORECASE)
     command = re.sub(r"atomic", "test", command, flags=re.IGNORECASE)   # e.g. "AtomicTest.txt"
     command = _TECHNIQUE_ID.sub("x", command)                 # no ATT&CK IDs in the input

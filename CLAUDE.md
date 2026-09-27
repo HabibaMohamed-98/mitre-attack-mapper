@@ -345,6 +345,40 @@ an unproven piece. When something breaks, it's in the piece just added.
       Dev results: right technique found 46% -> 52%; reaches the LLM 28% ->
       40% (fix 1) -> 45% (both). sample_logs local: shown 11 -> 13/17.
       Cost: answer prompts are larger (10 candidates).
-- Next: one full LLM run on the locked test set to get the honest end-to-end
-  number (193 logs is too many for one day's quota — use `--limit`). Then
-  Checkpoint 4 (API + UI + deploy), OPTIONAL / stretch.
+- [x] **Test-set result (2026-09-27), system at commit 23be006.** The locked
+      test set was split (first half of the builder-shuffled file):
+        data/test_now_atomic.json  97 logs — evaluated now (now "seen")
+        data/reserve_atomic.json   96 logs — RESERVED, never run/opened; keep
+                                   for a final pre-production check
+      Search only (no LLM), all 97: found 62%, reaches the LLM 54%.
+      Same random 30, no LLM vs full system:
+        found:            17/30 (57%)  ->  23/30 (77%)   (LLM rewrite helps search)
+        reaches the LLM:  17/30 (57%)  ->  22/30 (73%)
+        LLM main pick exactly right:        7/30 (23%)
+        right ID anywhere in the answer:   11/30 (37%)
+      Finding: the bottleneck MOVED. Search now delivers the answer 73% of the
+      time, but the LLM picks it as its main answer only 7 of those 22 times.
+      End-to-end exact is still ~1 in 4 (seed-42 run was 6/25 = 24%).
+      Cost: 60 calls, ~137k tokens for 30 logs (~4.5k/log with 10 candidates).
+- [~] **Why the LLM misses (diagnosed 2026-09-27, replayed from cache, 0 API
+      calls).** Of the 15 test_now logs where the right answer was shown but not
+      picked: 10 = the LLM named the SHELL (T1059.x PowerShell / cmd / Unix
+      shell / Cloud API) instead of what the command does; 4 = debatable labels
+      (LLM arguably right, e.g. rc.d script -> RC Scripts); 1 = no answer.
+      Root cause: round-2 changes told the rewrite to lead with the MECHANISM
+      (interpreter) and the LLM to pick the "core action the log records" —
+      added to catch one sample log (cmd.exe), it backfired on unseen data.
+      Fix (NOT yet measured):
+        - Rewrite prompt leads with ACTION (what the command does) + TOOL; the
+          shell is mentioned only if how it was used is itself suspicious.
+        - Grounding rule 7 reworded; new rule 8: T1059.x is primary only when
+          the interpreter use itself is suspicious (encoded/hidden/Office-
+          launched) or nothing else fits.
+        - Builder bug fixed: "C:\tools" became "C: ools" (\t read as a tab);
+          existing sets repaired IN PLACE by Atomic test ID (same tests,
+          reserve not opened; old seed-42 set has 4 unmatched, it's retired).
+      Test plan (needs Groq quota): old prompts (commit 23be006, via a git
+      worktree) vs new prompts on the SAME first 20 dev_atomic.json logs,
+      ~180k tokens total. Judge on dev, not test_now (test_now was studied).
+- Next: run that before/after on dev. Checkpoint 4 (API + UI + deploy) remains
+  OPTIONAL / stretch.
