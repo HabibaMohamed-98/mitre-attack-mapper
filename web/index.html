@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ATT&amp;CK Log Mapper</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --card: #ffffff; --text: #1d2330; --muted: #5b6475;
+    --border: #dde1e8; --accent: #2f5bd3; --good: #1f7a45; --warn: #9a5b00; --bad: #b3261e;
+    --code: #eef1f6;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14171d; --card: #1c2029; --text: #e6e9ef; --muted: #9aa3b5;
+      --border: #2c3240; --accent: #7a9bff; --good: #5cc98b; --warn: #e0a84a; --bad: #ff8a80;
+      --code: #252a36;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 16px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 820px; margin: 0 auto; padding: 32px 16px 64px; }
+  h1 { font-size: 1.5rem; margin: 0 0 4px; }
+  .sub { color: var(--muted); margin: 0 0 24px; }
+  textarea { width: 100%; min-height: 120px; padding: 12px; border: 1px solid var(--border);
+             border-radius: 8px; background: var(--card); color: var(--text);
+             font: 14px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; resize: vertical; }
+  .row { display: flex; gap: 12px; align-items: center; margin: 12px 0 28px; flex-wrap: wrap; }
+  button { border: 0; border-radius: 8px; padding: 10px 18px; font: inherit; cursor: pointer; }
+  #go { background: var(--accent); color: #fff; font-weight: 600; }
+  #go:disabled { opacity: .6; cursor: wait; }
+  #example { background: transparent; color: var(--accent); padding: 10px 4px; }
+  #status { color: var(--muted); }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+          padding: 18px 20px; margin-bottom: 16px; }
+  .tech-id { font-weight: 700; font-size: 1.15rem; }
+  .tech-name { font-size: 1.15rem; }
+  .label { color: var(--muted); font-size: .85rem; text-transform: uppercase;
+           letter-spacing: .04em; margin: 14px 0 4px; }
+  code, .mono { background: var(--code); border-radius: 6px; padding: 2px 6px;
+                font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+                word-break: break-word; }
+  .mono { display: block; padding: 10px 12px; white-space: pre-wrap; }
+  .badge { display: inline-block; font-size: .8rem; padding: 2px 8px; border-radius: 99px;
+           margin-left: 8px; border: 1px solid currentColor; }
+  .ok { color: var(--good); } .warn { color: var(--warn); } .bad { color: var(--bad); }
+  details { margin-top: 10px; } summary { cursor: pointer; color: var(--muted); }
+  ul { margin: 8px 0 0; padding-left: 20px; }
+  .error { border-color: var(--bad); color: var(--bad); }
+</style>
+</head>
+<body>
+<main>
+  <h1>ATT&amp;CK Log Mapper</h1>
+  <p class="sub">Paste a security log line. The system finds the matching MITRE ATT&amp;CK
+    technique, quotes the evidence from the log, and suggests a mitigation — using only real ATT&amp;CK data.</p>
+
+  <textarea id="log" placeholder="e.g. Sysmon EventID 10 ProcessAccess: SourceImage=C:\Users\public\mimi.exe TargetImage=C:\Windows\System32\lsass.exe"></textarea>
+  <div class="row">
+    <button id="go">Analyze</button>
+    <button id="example" type="button">Try an example</button>
+    <span id="status"></span>
+  </div>
+
+  <div id="results"></div>
+</main>
+
+<script>
+const EXAMPLE = String.raw`Sysmon EventID 1 ProcessCreate: Image=C:\Windows\System32\vssadmin.exe CommandLine="vssadmin.exe delete shadows /all /quiet"`;
+
+const $ = (id) => document.getElementById(id);
+
+// Build elements with textContent only, so nothing from the log or the LLM can be
+// interpreted as HTML.
+function el(tag, text, className) {
+  const node = document.createElement(tag);
+  if (text !== undefined && text !== null) node.textContent = text;
+  if (className) node.className = className;
+  return node;
+}
+
+function renderTechnique(t) {
+  const card = el("div", null, "card");
+  const title = el("div");
+  title.append(el("span", t.technique_id, "tech-id"), " ", el("span", t.technique_name, "tech-name"));
+  if (!t.grounded) title.append(el("span", "not among the retrieved options", "badge bad"));
+  card.append(title);
+
+  card.append(el("div", "Evidence from the log", "label"));
+  card.append(el("code", t.evidence || "(none given)"));
+
+  card.append(el("div", "Suggested mitigation", "label"));
+  const mit = el("div", t.mitigation || "(none given)");
+  if (t.mitigation_grounded === false) mit.append(el("span", "not listed for this technique", "badge warn"));
+  card.append(mit);
+  return card;
+}
+
+function render(data) {
+  const out = $("results");
+  out.replaceChildren();
+
+  if (data.techniques.length === 0) {
+    const none = el("div", null, "card");
+    none.append(el("strong", "No technique matched."));
+    none.append(el("p", "None of the retrieved ATT&CK techniques fit this log well enough — it may be ordinary activity.", ""));
+    out.append(none);
+  } else {
+    data.techniques.forEach((t) => out.append(renderTechnique(t)));
+  }
+
+  const more = el("div", null, "card");
+  if (data.understood_as) {
+    more.append(el("div", "What the system understood", "label"));
+    more.append(el("div", data.understood_as));
+  }
+  const opts = el("details");
+  opts.append(el("summary", `Options it chose from (${data.candidates.length} real ATT&CK techniques)`));
+  const list = el("ul");
+  data.candidates.forEach((c) => list.append(el("li", `${c.technique_id} ${c.name}`)));
+  opts.append(list);
+  more.append(opts);
+
+  const raw = el("details");
+  raw.append(el("summary", "The LLM's full answer"));
+  raw.append(el("div", data.raw_answer, "mono"));
+  more.append(raw);
+  more.append(el("p", `Took ${data.seconds} s`, "label"));
+  out.append(more);
+}
+
+async function analyze() {
+  const log = $("log").value.trim();
+  if (!log) { $("status").textContent = "Paste a log line first."; return; }
+
+  $("go").disabled = true;
+  $("results").replaceChildren();
+  const started = Date.now();
+  const tick = () => { $("status").textContent =
+      `Analyzing… ${Math.round((Date.now() - started) / 1000)} s (usually 10–30 s; the first request also loads the models)`; };
+  tick();
+  const timer = setInterval(tick, 1000);
+
+  try {
+    const response = await fetch("/analyze", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ log }),
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.detail || `Request failed (${response.status})`);
+    render(data);
+    $("status").textContent = "";
+  } catch (err) {
+    $("status").textContent = "";
+    $("results").replaceChildren(el("div", String(err.message || err), "card error"));
+  } finally {
+    clearInterval(timer);
+    $("go").disabled = false;
+  }
+}
+
+$("go").addEventListener("click", analyze);
+$("example").addEventListener("click", () => { $("log").value = EXAMPLE; });
+$("log").addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) analyze();   // Cmd/Ctrl+Enter
+});
+</script>
+</body>
+</html>

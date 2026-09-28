@@ -27,3 +27,6 @@ data/reports/
 
 # macOS noise
 .DS_Store
+
+# Local editor/launcher settings (machine-specific paths)
+.claude/

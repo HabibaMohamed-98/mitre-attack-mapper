@@ -27,3 +27,7 @@ tantivy==0.26.2   # backs LanceDB's full-text (keyword) index
 # The LLM runs on the provider's servers (default: Groq), so no GPU is needed.
 openai==3.19.0
 python-dotenv==1.2.3
+
+# --- Web service (Checkpoint 4, local): API + the single web page ---
+fastapi==0.141.1
+uvicorn==0.54.0

@@ -46,19 +46,22 @@ class MappingPipeline:
         self.retriever = RetrievalPipeline(rewriter=QueryRewriter(self.llm))
         self.top_k = top_k
 
-    def run(self, log_line: str, return_candidates: bool = False):
+    def run_detailed(self, log_line: str) -> dict:
         """
-        Map one log line to a grounded answer.
+        Map one log line to a grounded answer, returning every step's output:
+
+          {"description": str | None,  # what the system understood (the rewrite)
+           "candidates": [...],        # the real ATT&CK techniques the LLM chose from
+           "answer": str}              # the LLM's grounded answer text
 
         Steps:
           1. RETRIEVE the top techniques (with their mitigations) for the log.
           2. BUILD the grounded prompt from the log + those candidates.
           3. GENERATE the final answer with the LLM.
-
-        Returns the answer string, or (answer, candidates) if return_candidates.
         """
         # 1. Retrieve grounded candidates (real IDs + real mitigations).
-        candidates = self.retriever.retrieve(log_line, top_k=self.top_k)
+        retrieved = self.retriever.retrieve_detailed(log_line, top_k=self.top_k)
+        candidates = retrieved["top"]
 
         # 2. Build the grounded prompt (system rules + log + candidates).
         system_prompt, user_prompt = build_prompt(log_line, candidates)
@@ -66,6 +69,19 @@ class MappingPipeline:
         # 3. Ask the hosted LLM to write the grounded mapping.
         answer = self.llm.chat(system_prompt, user_prompt)
 
+        return {
+            "description": retrieved["description"],
+            "candidates": candidates,
+            "answer": answer,
+        }
+
+    def run(self, log_line: str, return_candidates: bool = False):
+        """
+        Map one log line to a grounded answer (the command-line entry point uses
+        this). Returns the answer string, or (answer, candidates) if
+        return_candidates.
+        """
+        result = self.run_detailed(log_line)
         if return_candidates:
-            return answer, candidates
-        return answer
+            return result["answer"], result["candidates"]
+        return result["answer"]

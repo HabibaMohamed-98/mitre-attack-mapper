@@ -160,7 +160,7 @@ standard OpenAI-compatible API. Switching providers is an **env-var change only*
 | **Groq** (default) | `https://api.groq.com/openai/v1` | `openai/gpt-oss-20b` (free tier) |
 | OpenRouter | `https://openrouter.ai/api/v1` | a `:free` model |
 | Mistral | `https://api.mistral.ai/v1` | `mistral-small-latest` |
-| Gemini | `https://generativelanguage.googleapis.com/v1beta/openai` | `gemini-2.0-flash` |
+| Gemini | `https://generativelanguage.googleapis.com/v1beta/openai/` | `gemini-3.5-flash` (free tier: ~20 requests/day) |
 
 The model runs on the **provider's servers**, so no GPU is needed on this laptop.
 
@@ -175,3 +175,24 @@ Runs every log in `sample_logs.json` and reports **retrieval** (is the right
 technique in the candidates / top 3 / #1?) and **generation** (does the LLM's
 answer name it?) separately, so a wrong answer points to the half to fix. The
 data is synthetic — use the numbers to compare changes, not as a benchmark.
+
+**7. Use it in a browser (local web app):**
+
+```bash
+./venv/bin/uvicorn src.api:app --host 127.0.0.1 --port 8000
+```
+
+Then open <http://127.0.0.1:8000>, paste a log line, and click **Analyze**
+(or press Cmd/Ctrl+Enter). The first request takes longer because it loads the
+models. Stop the server with Ctrl+C.
+
+- `src/api.py` — FastAPI app. It adds no mapping logic: it calls the same
+  `MappingPipeline` as `analyze_log.py`. Routes: `GET /` (the page),
+  `POST /analyze` with `{"log": "..."}` (returns JSON), `GET /health`.
+- `src/answer_parser.py` — turns the LLM's text answer into structured
+  `techniques` (ID, name, evidence, mitigation) and re-checks the grounding rule:
+  any ID not among the retrieved options is flagged `grounded: false`.
+- `web/index.html` — the single page. Everything from the log and the LLM is
+  shown as plain text (never as HTML).
+
+It uses the same Groq quota as everything else (about 5k tokens per log).

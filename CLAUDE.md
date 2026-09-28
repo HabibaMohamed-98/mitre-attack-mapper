@@ -179,6 +179,8 @@ an unproven piece. When something breaks, it's in the piece just added.
 - [ ] **Checkpoint 4 — API + UI + deploy.** FastAPI wrapper + minimal web page +
       Docker → deployed to a URL. *Done when:* it's live and shareable.
       **OPTIONAL / STRETCH GOAL — save for last.** See "Deploy vs. eval" below.
+      Progress: API + web page done and working LOCALLY (2026-09-28).
+      Not yet: Docker, deploy.
 
 ### Deploy vs. eval (DIFFERENT things — don't confuse them)
 - **Eval = checking answer QUALITY** (log in → answer out → is it right?).
@@ -395,6 +397,30 @@ an unproven piece. When something breaks, it's in the piece just added.
       Progress so far: search-only on the same dev logs clearly improved
       (reaches LLM 28% -> 45%), but end-to-end on unseen logs is flat at ~24%
       (24% / 23% / 25% on DIFFERENT logs and models — not directly comparable).
+- [x] **Checkpoint 4, part 1 — local web app (2026-09-28).** Runs locally only;
+      NOT deployed.
+        - src/api.py (FastAPI): GET / (the page), POST /analyze {"log": ...} ->
+          JSON {techniques, understood_as, candidates, raw_answer, seconds},
+          GET /health. Adds no mapping logic — calls MappingPipeline, built once
+          on the first request. Clear errors: empty/oversized log (400, max 4,000
+          chars), missing key/auth/network (503), quota (429).
+        - src/pipeline.py: new run_detailed() (also returns the rewrite);
+          run() now wraps it, so analyze_log.py is unchanged.
+        - src/answer_parser.py: LLM text -> {technique_id, technique_name,
+          evidence, mitigation_id, mitigation}; re-checks grounding (ID not among
+          the shown options -> grounded: false; M-ID not listed for that
+          technique -> mitigation_grounded: false). Tolerates **bold**/backticks.
+        - web/index.html: single page (paste log, Analyze or Cmd/Ctrl+Enter),
+          renders technique/evidence/mitigation, what it understood, the options
+          and the raw answer; all text inserted as textContent (no HTML
+          injection); light/dark.
+        - requirements: fastapi 0.141.1, uvicorn 0.54.0. .claude/ gitignored
+          (launch.json has machine-specific paths).
+      Run: `./venv/bin/uvicorn src.api:app --host 127.0.0.1 --port 8000`, open
+      http://127.0.0.1:8000. Verified: vssadmin example -> T1490 + evidence +
+      M1053 in 11 s; error paths return clear messages; no server errors.
+      Not re-run after the pipeline refactor: scripts/analyze_log.py (same code
+      path as the API).
 - Next: fair before/after — old code (23be006) on the SAME 20 dev logs with
-  gpt-oss-120b (~85k tokens; the "after" answers are cached). Checkpoint 4
-  (API + UI + deploy) remains OPTIONAL / stretch.
+  gpt-oss-120b (~85k tokens; the "after" answers are cached). Then Checkpoint 4
+  part 2 (Docker + deploy), OPTIONAL — only when the user asks.
