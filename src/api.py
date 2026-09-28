@@ -11,8 +11,8 @@ same one scripts/analyze_log.py uses) and turns its output into JSON. If you
 change how mapping works, you change src/pipeline.py and friends — not this.
 
 Run locally:
-  ./venv/bin/uvicorn src.api:app --host 127.0.0.1 --port 8000
-then open http://127.0.0.1:8000
+  ./venv/bin/uvicorn src.api:app --host 127.0.0.1 --port 7860
+then open http://127.0.0.1:7860
 """
 
 import os

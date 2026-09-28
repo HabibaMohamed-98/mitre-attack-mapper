@@ -216,6 +216,18 @@ an unproven piece. When something breaks, it's in the piece just added.
 
 ---
 
+## Docker: this project only
+
+This project is self-contained. Do not reference, inspect, or act on anything
+outside it — no other containers, images, folders, or projects.
+- Only ever act on this project's own names: image `mitre-attack-mapper:*`,
+  container `mitre-attack-mapper`. Target them by exact name.
+- NEVER run commands that affect everything: `docker system/image/container/
+  volume prune`, `docker stop|rm $(docker ps -q)`, `docker compose down`.
+- This project uses port **7860** (locally and in the container).
+- The Dockerfile's base image is pinned by digest, so builds never re-pull or
+  re-tag shared base images.
+
 ## Principles
 
 - Rooted, not guessing: every component is a real, mainstream, documented tool.
@@ -416,11 +428,50 @@ an unproven piece. When something breaks, it's in the piece just added.
           injection); light/dark.
         - requirements: fastapi 0.141.1, uvicorn 0.54.0. .claude/ gitignored
           (launch.json has machine-specific paths).
-      Run: `./venv/bin/uvicorn src.api:app --host 127.0.0.1 --port 8000`, open
-      http://127.0.0.1:8000. Verified: vssadmin example -> T1490 + evidence +
+      Run: `./venv/bin/uvicorn src.api:app --host 127.0.0.1 --port 7860`, open
+      http://127.0.0.1:7860. Verified: vssadmin example -> T1490 + evidence +
       M1053 in 11 s; error paths return clear messages; no server errors.
       scripts/analyze_log.py re-checked after the refactor: scheduled-task log
       -> T1053.005 + evidence + M1047.
-- Next: fair before/after — old code (23be006) on the SAME 20 dev logs with
-  gpt-oss-120b (~85k tokens; the "after" answers are cached). Then Checkpoint 4
-  part 2 (Docker + deploy), OPTIONAL — only when the user asks.
+- [x] **Fair before/after of the shell fix (2026-09-28).** Same 20 dev logs,
+      same model (gpt-oss-120b). Before = commit 23be006 (run from a temporary
+      git worktree sharing data/, removed after); after = 281063a (replayed from
+      the LLM cache, 0 API calls). Reports: data/reports/dev20_BEFORE_23be006_*
+      and dev20_AFTER_281063a_*.
+                               before   after
+        correct (main pick)      4/20    5/20
+        search never found it       6       8
+        found, ranked too low       3       2
+        LLM shown it, chose other   5       4
+        right ID but not first      2       1
+        answered a shell T1059.x   13       7
+      Verdict: the fix nearly halved shell answers on identical logs, but the
+      score moved by one log (noise). Search found slightly less after (14 ->
+      12) because the rewrite changed. Correction: the earlier "shell answers
+      dropped to 1 of 5" counted only shown-but-wrong logs; across all 20 it's 7.
+      Why only 5/20: mostly SEARCH — when the right technique isn't found the
+      LLM falls back to an always-true shell technique. Several LLM "misses"
+      are neighbours of the key (two ATT&CK steganography techniques; podman
+      build -> Build Image on Host; Domain Account vs Domain Groups).
+      Decision: deploy the NEW version. Model for deployment (user's choice,
+      2026-09-28): openai/gpt-oss-20b — faster, more quota headroom for
+      visitors. (20b vs 120b not compared on the same logs.) Cost ~90k tokens.
+- [~] **Checkpoint 4 part 2 — Docker done, hosting NOT chosen (2026-09-28).**
+      Dockerfile (python:3.11-slim pinned by digest, CPU-only torch 2.2.2, runs
+      as uid 1000 on port 7860, retry loops for slow networks; ATT&CK data,
+      index, embedding model and reranker are built/downloaded INTO the image —
+      no runtime downloads) + .dockerignore (keeps .env, venv, .git, data/ out).
+      The API key is NOT in the image (checked: no env var, no .env, no key in
+      files); it's passed at run time (`--env-file .env` / a host secret).
+      Local test: `docker run -d --name mitre-attack-mapper -p
+      127.0.0.1:7860:7860 --env-file .env mitre-attack-mapper:local` -> LSASS
+      log -> T1003.001, grounded, evidence + M1043, 11.5 s. Image 2.86 GB;
+      memory ~450 MB after a request (lower than the 1–1.5 GB estimate).
+      Build issues fixed on the way: flaky network (retries, split torch step)
+      and a root-owned model cache (chown before switching user).
+      Hosting: Hugging Face Docker Spaces now need PRO ($9/mo) — free tier is
+      Static only. Options given to the user: HF PRO, Google Cloud Run (free
+      tier, card on file), Render free 512 MB (fits ~450 MB but tight), or
+      GitHub only. README carries the HF Spaces YAML header (harmless elsewhere).
+- Next: user picks a host; then deploy step by step. Biggest accuracy lever
+  afterwards: search recall.

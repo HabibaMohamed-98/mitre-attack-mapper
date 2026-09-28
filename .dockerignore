@@ -1,0 +1,23 @@
+# Keep secrets and local-only files OUT of the container build.
+
+# Secrets — the API key is passed at runtime as an environment variable instead.
+.env
+.env.*
+!.env.example
+
+# Notes for AI assistants/developers — not needed inside the app image.
+CLAUDE.md
+CLAUDE.local.md
+
+# Local environment and tooling
+venv/
+.venv/
+.git/
+.claude/
+__pycache__/
+*.pyc
+.DS_Store
+
+# Local data: the image downloads ATT&CK data and builds its own index.
+# (Also keeps the LLM answer cache, test sets and reports out.)
+data/

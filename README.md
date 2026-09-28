@@ -1,3 +1,14 @@
+---
+title: MITRE ATT&CK Log Mapper
+emoji: 🛡️
+colorFrom: blue
+colorTo: gray
+sdk: docker
+app_port: 7860
+pinned: false
+short_description: Map a security log line to MITRE ATT&CK techniques (RAG demo)
+---
+
 # MITRE ATT&CK Mapper (RAG project)
 
 A from-scratch **RAG** (Retrieval-Augmented Generation) system that maps security
@@ -179,10 +190,10 @@ data is synthetic — use the numbers to compare changes, not as a benchmark.
 **7. Use it in a browser (local web app):**
 
 ```bash
-./venv/bin/uvicorn src.api:app --host 127.0.0.1 --port 8000
+./venv/bin/uvicorn src.api:app --host 127.0.0.1 --port 7860
 ```
 
-Then open <http://127.0.0.1:8000>, paste a log line, and click **Analyze**
+Then open <http://127.0.0.1:7860>, paste a log line, and click **Analyze**
 (or press Cmd/Ctrl+Enter). The first request takes longer because it loads the
 models. Stop the server with Ctrl+C.
 
