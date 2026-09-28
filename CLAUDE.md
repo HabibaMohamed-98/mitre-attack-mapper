@@ -419,8 +419,8 @@ an unproven piece. When something breaks, it's in the piece just added.
       Run: `./venv/bin/uvicorn src.api:app --host 127.0.0.1 --port 8000`, open
       http://127.0.0.1:8000. Verified: vssadmin example -> T1490 + evidence +
       M1053 in 11 s; error paths return clear messages; no server errors.
-      Not re-run after the pipeline refactor: scripts/analyze_log.py (same code
-      path as the API).
+      scripts/analyze_log.py re-checked after the refactor: scheduled-task log
+      -> T1053.005 + evidence + M1047.
 - Next: fair before/after — old code (23be006) on the SAME 20 dev logs with
   gpt-oss-120b (~85k tokens; the "after" answers are cached). Then Checkpoint 4
   part 2 (Docker + deploy), OPTIONAL — only when the user asks.
