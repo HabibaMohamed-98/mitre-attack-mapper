@@ -325,7 +325,7 @@ outside it — no other containers, images, folders, or projects.
       Honesty note: these fixes were chosen by studying the same 17 logs, so
       scores on them are optimistic — the real test is fresh, unseen labelled logs.
 - [x] **Held-out eval (2026-09-27) — the honest numbers.** Pipeline frozen at
-      commit 0a5386f (src/ untouched). scripts/build_heldout_set.py builds
+      commit 66d99c2 (src/ untouched). scripts/build_heldout_set.py builds
       data/heldout_atomic.json from Atomic Red Team (atomics/Indexes/index.yaml,
       sha256 08f8bd07…, seed 42): one random command-line test per technique,
       turned into a process-creation line, technique IDs + Atomic folder names
@@ -359,7 +359,7 @@ outside it — no other containers, images, folders, or projects.
       Dev results: right technique found 46% -> 52%; reaches the LLM 28% ->
       40% (fix 1) -> 45% (both). sample_logs local: shown 11 -> 13/17.
       Cost: answer prompts are larger (10 candidates).
-- [x] **Test-set result (2026-09-27), system at commit 23be006.** The locked
+- [x] **Test-set result (2026-09-27), system at commit f442263.** The locked
       test set was split (first half of the builder-shuffled file):
         data/test_now_atomic.json  97 logs — evaluated now (now "seen")
         data/reserve_atomic.json   96 logs — RESERVED, never run/opened; keep
@@ -391,12 +391,12 @@ outside it — no other containers, images, folders, or projects.
         - Builder bug fixed: "C:\tools" became "C: ools" (\t read as a tab);
           existing sets repaired IN PLACE by Atomic test ID (same tests,
           reserve not opened; old seed-42 set has 4 unmatched, it's retired).
-      Test plan (needs Groq quota): old prompts (commit 23be006, via a git
+      Test plan (needs Groq quota): old prompts (commit f442263, via a git
       worktree) vs new prompts on the SAME first 20 dev_atomic.json logs,
       ~180k tokens total. Judge on dev, not test_now (test_now was studied).
 - [x] **End-to-end run after the shell fix (2026-09-27).** gpt-oss-120b (set per
       run via LLM_MODEL env var; .env still says gpt-oss-20b), first 20 of
-      dev_atomic.json (now "seen"), commit 281063a. New eval options:
+      dev_atomic.json (now "seen"), commit 0e98f96. New eval options:
       `--token-budget N` (stops cleanly before a log once N tokens are used) and
       `--report PATH` (per-log Markdown: log, rewrite, options shown, the LLM's
       full answer, plain-English verdict of WHERE it failed, time, tokens).
@@ -434,8 +434,8 @@ outside it — no other containers, images, folders, or projects.
       scripts/analyze_log.py re-checked after the refactor: scheduled-task log
       -> T1053.005 + evidence + M1047.
 - [x] **Fair before/after of the shell fix (2026-09-28).** Same 20 dev logs,
-      same model (gpt-oss-120b). Before = commit 23be006 (run from a temporary
-      git worktree sharing data/, removed after); after = 281063a (replayed from
+      same model (gpt-oss-120b). Before = commit f442263 (run from a temporary
+      git worktree sharing data/, removed after); after = 0e98f96 (replayed from
       the LLM cache, 0 API calls). Reports: data/reports/dev20_BEFORE_23be006_*
       and dev20_AFTER_281063a_*.
                                before   after
