@@ -69,11 +69,19 @@ def ensure_data_downloaded() -> Path:
         print(f"[ok] ATT&CK data already present: {STIX_FILE}")
         return STIX_FILE
 
-    print(f"[..] Downloading ATT&CK Enterprise STIX data (~35 MB, one time)...")
+    print(f"[..] Downloading ATT&CK Enterprise STIX data (~50 MB, one time)...")
     print(f"     from: {STIX_URL}")
 
-    # Stream the file straight to disk. This is the one-time setup cost.
-    urllib.request.urlretrieve(STIX_URL, STIX_FILE)
+    # Download to a temporary ".part" file first and rename it only once the
+    # download is complete. If the connection drops halfway, no half-finished
+    # file is left under the real name (which the check above would otherwise
+    # mistake for a finished download next time).
+    partial = STIX_FILE.with_name(STIX_FILE.name + ".part")
+    try:
+        urllib.request.urlretrieve(STIX_URL, partial)
+        partial.replace(STIX_FILE)
+    finally:
+        partial.unlink(missing_ok=True)
 
     print(f"[ok] Saved to: {STIX_FILE}")
     return STIX_FILE

@@ -59,11 +59,15 @@ USER app
 
 # 3) Build the searchable library INTO the image, so the app starts fast and
 #    needs no downloads at runtime:
-#    - download the ATT&CK data (~40 MB) and build the index (this also
+#    - download the ATT&CK data (~50 MB) and build the index (this also
 #      downloads the embedding model, all-MiniLM-L6-v2, ~90 MB)
 #    - pre-download the reranker (ms-marco-MiniLM-L-6-v2, ~90 MB)
-RUN python scripts/load_attack_data.py \
- && python scripts/build_index.py \
+#    The ATT&CK download (~50 MB) retries up to 5 times on a flaky connection.
+RUN for attempt in 1 2 3 4 5; do \
+      python scripts/load_attack_data.py && break; \
+      echo "ATT&CK download failed (attempt $attempt), retrying..."; sleep 10; \
+    done && test -s data/enterprise-attack.json
+RUN python scripts/build_index.py \
  && python -c "from sentence_transformers import CrossEncoder; from src.reranker import RERANKER_MODEL; CrossEncoder(RERANKER_MODEL)"
 
 EXPOSE 7860
