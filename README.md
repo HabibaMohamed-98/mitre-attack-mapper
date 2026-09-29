@@ -1,14 +1,3 @@
----
-title: MITRE ATT&CK Log Mapper
-emoji: 🛡️
-colorFrom: blue
-colorTo: gray
-sdk: docker
-app_port: 7860
-pinned: false
-short_description: Map a security log line to MITRE ATT&CK techniques (RAG demo)
----
-
 # MITRE ATT&CK Mapper (RAG project)
 
 A from-scratch **RAG** (Retrieval-Augmented Generation) system that maps security
@@ -19,10 +8,51 @@ logs to **MITRE ATT&CK** techniques and suggests a grounded response.
 This is a clean-room learning + portfolio project built on open, public data only.
 The full plan, decisions, and checkpoint status live in [`CLAUDE.md`](CLAUDE.md).
 
-**Status:** Checkpoint 3 complete — the full pipeline works end-to-end: a log line
-goes in, and a grounded answer comes out (technique ID(s) + evidence + suggested
-mitigation), written by a free hosted LLM. Checkpoint 4 (API + UI + deploy) is
-optional/last.
+**Status:** working end-to-end, with a local web app and a Docker package. Paste a
+log line into the page and get back the matching technique ID(s), the evidence
+quoted from the log, and a suggested mitigation from ATT&CK's own data. It runs
+on your machine; there is no hosted demo.
+
+## Quick start (Docker)
+
+You need [Docker](https://www.docker.com/) and a free
+[Groq API key](https://console.groq.com/keys) (no credit card).
+
+```bash
+git clone https://github.com/HabibaMohamed-98/mitre-attack-mapper.git
+cd mitre-attack-mapper
+cp .env.example .env          # then put your Groq key in .env (LLM_API_KEY=...)
+docker build -t mitre-attack-mapper .
+docker run --rm -p 127.0.0.1:7860:7860 --env-file .env mitre-attack-mapper
+```
+
+Open <http://localhost:7860>, paste a log line, and click **Analyze**. The first
+build takes a while (it downloads the ATT&CK data and two small models, ~2.9 GB
+image). Your key is passed in when the container starts; it is never built into
+the image.
+
+## How well does it work? (honest numbers)
+
+Measured on **unseen** labelled data built from
+[Atomic Red Team](https://github.com/redcanaryco/atomic-red-team) tests (each
+test's command turned into a process-creation log line, with answer giveaways
+removed), and separately for search vs. the LLM's final answer:
+
+| On unseen logs | Result |
+|---|---|
+| Search finds the right technique | ~50–75% |
+| The right technique reaches the LLM | ~50–70% |
+| **The LLM's main answer is exactly right** | **~1 in 4** (5/20, 7/30, 6/25 across runs) |
+
+- The weakest link is **search**: when the right technique isn't found, the LLM
+  often falls back to a generic "a command shell ran" technique.
+- Several "wrong" answers are close neighbours of the label (e.g. the two
+  different ATT&CK steganography techniques).
+- On the 17 hand-written sample logs in `sample_logs.json` it scores 13/17, but
+  the design was tuned on those, so that number is optimistic.
+
+This is a learning / portfolio project, not a production detector. How the
+evaluation works: `scripts/evaluate.py` and `scripts/build_heldout_set.py`.
 
 ## Project layout
 
